@@ -8,7 +8,9 @@
 *.pdf
 *.html
 Agent*.txt
-data/
+/data/
+*.egg-info/
+build/
 *.env
 .env
 .env.*
