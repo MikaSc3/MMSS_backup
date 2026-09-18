@@ -1,0 +1,11 @@
+*.STEP
+*.png
+*.json
+*.csv
+*.pyc
+*.xlsx
+*.zip
+*.pdf
+*.html
+Agent*.txt
+data/

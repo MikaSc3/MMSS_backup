@@ -1,0 +1,190 @@
+# Default experiment settings (code-only). These are loaded automatically.
+# You can override them by selecting a specific experiment file.
+
+# === RUN CONTROL ===
+# How many times this experiment is repeated when run via run_ffa_only_experiments.py.
+# Each repetition creates its own timestamped run folder (e.g. run_..._rep1_FFA_only).
+repetitions: 1
+
+# === GLOBAL PROMPT SETTINGS ===
+# Base system prompt used by all nodes (unless overridden)
+
+base_system_prompt_id: "cad_analysis_expert_v1"
+
+# === LLM MODEL SELECTION ===
+# "4o"  → GPT-4o  (uses AZURE_ENDPOINT_4O from .env)
+# "4.1" → GPT-4.1 (uses AZURE_ENDPOINT_41 from .env)
+# "5.4" -> GPT-5.4 (uses AZURE_ENDPOINT_54 from .env)
+llm_model: "5.4"
+
+# Global image downscaling factor (for ALL nodes: ASV, FFA, etc.)
+image_downscale_factor: 0.7
+
+# View filters (filenames must contain one of these keywords)
+img_to_analyse_assy: ["iso1_transp_0_0", "iso1_exp_transp_0_0"]
+img_to_analyse_monopart: ["iso1_transp_0_0","iso1_transp_0_3"]
+
+# Inject assembly context JSON into part describer prompts
+use_assembly_context: true
+
+# Optional hard cap (independent of tool arg limit)
+max_images_per_call: null
+
+# Optional downscaling of images *before* base64 encoding.
+# 1.0 means no scaling. Values < 1.0 reduce width/height by this factor.
+downscaling_factor: 0.7
+
+# Workflow/debug output (printed to stdout)
+# You can override these in experiment.yaml.
+workflow_print: true
+# How many characters of the constructed prompt text to include in debug preview.
+workflow_print_prompt_preview_chars: 800
+
+# Monopart analysis parallelization (ThreadPoolExecutor in _node_run_monoparts)
+# Set to true to process parts concurrently (recommended for assemblies with many parts)
+parallel: false   # Set to true in experiment YAMLs to activate
+max_workers: 4    # Number of parallel LLM workers
+
+# Persist a run manifest JSON for traceability (effective settings + prompt templates used)
+workflow_save_run_manifest: false
+
+# If true, store full prompt template texts in the manifest (can be large).
+workflow_save_run_manifest_include_prompt_text: false
+
+# If true, store rendered system/user bootstrap prompts in the manifest (can be large).
+workflow_save_run_manifest_include_rendered_prompts: false
+
+# If true, include tool-returned stats/selection data per step.
+workflow_save_run_manifest_include_step_details: true
+
+# Vision completion budget per image.
+# The image describer uses: max_completion_tokens = img_describer_tokens_per_img * num_images
+img_describer_tokens_per_img: 2500
+
+# FFA report synthesis can produce large structured JSON responses.
+FFA_reporter_max_tokens: 99000
+
+# Optional few-shot example IDs (see configs/prompts.yaml: examples: ...)
+include_examples_assy: []
+include_examples_monopart: []
+
+# === NODE-SPECIFIC PROMPT SETTINGS ===
+
+# Assembly Analysis Image (AAI) - Analyze complete assemblies
+AAI_system_prompt_id: "cad_analysis_expert_v1"  # null = use base_system_prompt_id
+AAI_human_prompt_id: "assembly_analysis_task_v1"
+AAI_json_file_keyword: "Overview_Stepparser"  # Assembly Describer: loads stepparser assembly overview (runs FIRST, only stepparser data available)
+AAI_json_keys: ["total_parts", "unique_parts", "bounding_box"]  # Keys to extract from assembly overview JSON
+AAI_part_id_list: []  # Empty = all parts, or list of part_ids to filter
+
+# Monopart Analysis Image (AMI) - Analyze individual parts
+AMI_system_prompt_id: "cad_analysis_expert_v1"  # null = use base_system_prompt_id
+AMI_human_prompt_id: "monopart_analysis_task_v1"
+
+# Monopart Analysis Image (AMI) - JSON settings
+AMI_assembly_json_file_keyword: "Overview_Enriched"  # Monopart Describer: loads enriched assembly context (created by Assembly Describer)
+AMI_assembly_json_keys: ["assembly_name_guess", "assembly_description", "total_parts", "unique_parts"]  # Keys to extract from assembly context JSON
+AMI_assembly_part_id_list: []  # Empty = all parts, or list of part_ids to filter from assembly context
+
+
+
+AMI_json_file_keyword: "Data_stepparser"  # Monopart Describer: loads stepparser part metadata
+AMI_json_keys: ["part_id", "volume", "bounding_box", "color"]  # Keys to extract from part JSON
+AMI_part_id_list: []  # Empty = all parts, or list of part_ids to filter
+AMI_assembly_img_keywords: []      # Image keywords to load assembly reference images into monopart prompt; empty = disabled
+AMI_assembly_img_limit: 2          # Max number of assembly reference images per monopart call
+
+# Assembly Sequence Generation (ASG) - Generate assembly sequences
+ASG_system_prompt_id: "assembly_planner_expert_v1"  # Assembly planning expert system message
+ASG_human_prompt_id: "generate_assembly_sequence_task_v3"  # Task: optimized flat structure
+
+# Assembly Sequence Generation (ASG) - Settings
+ASG_image_keywords: ["iso1_transp_0_0", "iso1_exp_transp_0_0"]  # Images to attach to generation prompt
+ASG_json_file_keyword: "BOM_enriched"  # File keyword to search for JSON (matches {assembly}_BOM_enriched.json)
+ASG_json_keys: ["part_id","part_name_guess", part_is_touching]  # Keys to extract from JSON
+ASG_part_id_name_list: []  # Empty = all parts, or list of part_id_names (e.g. ["part001_bearing"])
+ASG_use_additional_info: false  # Load additional_info.txt if available
+ASG_use_manual_order: true  # Load assembly_order.json or assembly_order.txt if available
+ASG_include_remarks: false  # Load remarks.txt if available (set to true to include in prompt)
+ASG_include_GT_sequence: true  # Load ground_truth_sequence.txt if available (set to true to include in prompt)
+ASG_max_completion_tokens: 12000  # LLM output token limit
+ASG_max_json_chars: 10000  # Max chars per JSON file (truncated if longer)
+ASG_max_additional_info_chars: 2000  # Max chars for additional_info.txt
+ASG_downscale_images: 0.7  # DEPRECATED - Use global image_downscale_factor instead
+
+# Assembly Sequence from Ground Truth (ASGT) - Generate descriptions for GT-defined steps
+# Same context as ASG, but step structure is fixed by ground truth.
+# LLM only generates step_description + joining_process per step.
+ASGT_system_prompt_id: "assembly_sequence_gt_describer_v1"
+ASGT_human_prompt_id: "generate_step_descriptions_from_gt_v1"
+ASGT_image_keywords: ["iso1_transp_0_0", "iso1_exp_transp_0_0"]  # Same default as ASG
+ASGT_json_file_keyword: "BOM_enriched"
+ASGT_json_keys: ["part_id", "part_name_guess", "part_is_touching"]  # Keys to extract from BOM
+ASGT_use_additional_info: false  # Load additional_info.txt if available (toggleable)
+ASGT_include_images: true         # Send assembly images to LLM (toggleable to save tokens)
+ASGT_include_bom: true            # Send BOM JSON to LLM (toggleable)
+ASGT_max_completion_tokens: 8000
+ASGT_max_json_chars: 10000
+ASGT_downscale_images: 0.7  # Image downscale factor (uses global image_downscale_factor if set)
+ASV_system_prompt_id: "critical_reviewer_v1"  # Critical reviewer system message
+ASV_human_prompt_id: "validate_assembly_sequence_task_v1"  # Task: validate feasibility
+
+# Assembly Sequence Validation (ASV) - Settings
+# Controls whether step renderings (ISO + section views) are generated.
+# Default true – set to false to skip rendering entirely (speeds up runs without IA/ASV).
+enable_step_rendering: true
+ASV_mode: "disabled"  # "disabled", "enabled", "validate_only" (validate_only skips validation if output exists)
+ASV_json_keywords: ["BOM_enriched"]  # Which JSON files to use for validation (merged_bom contains all enriched part data)
+ASV_parts_json_keys: ["part_id","part_name_guess", "part_is_touching", "volume", "geometry_features", "material_info"]  # Keys to extract from BOM for base AND joining parts
+ASV_step_img_keywords: ["iso1_transp_0_3"]  # Current step images (keywords) - filters which views to load
+ASV_prior_step_img_keywords: ["iso1_transp_0_3"]  # Prior step images to show "BEFORE" state (empty list = no prior images)
+ASV_finished_assy_keywords: ["iso1_transp_0_3"]  # Complete assembly images (reference for final state)
+ASV_max_iterations: 1  # Maximum number of generation-validation iterations (run_1, run_2, run_3)
+ASV_transparency_values: [0.3]  # Transparency values for ISO renders. 0.0 (opaque) is ALWAYS added automatically
+                                # for section + explosion views even if not listed here.
+
+# ========================================================================
+# Interaction Analysis (IA) - Geometric interaction analysis
+# ========================================================================
+
+IA_system_prompt_id: "Interaction_Analyst_V1"  # System prompt (user defines)
+IA_human_prompt_id: "Analyse_Interaction_V1"  # Human/task prompt (user defines)
+
+# Interaction Analysis - Image settings
+IA_sequence_step_img_keywords: ["iso1_transp_0_3"]  # Step renderings (current assembly state)
+IA_monopart_img_keywords: ["iso1_transp_0_0", "iso1_transp_0_3"]  # Individual part renderings
+
+# Interaction Analysis - JSON/BOM settings
+IA_json_file_keyword: "BOM_enriched"  # File to load for metadata
+IA_base_part_json_keys: ["part_id", "part_name_guess", "geometry_description", "part_is_touching"]
+IA_joining_part_json_keys: ["part_id", "part_name_guess", "material_word", "geometry_description", "functional_surfaces", "part_is_touching"]
+IA_part_id_name_list: []  # Empty = all parts, or specific list
+
+# Interaction Analysis - Processing
+IA_include_monopart_renderings: true  # Load individual part images for base + joining parts
+IA_monopart_duplicate_handling: "first"  # "first" = use first copy, "base" = map to base part
+IA_max_completion_tokens: 3000  # LLM output token limit per step
+IA_mode: "enabled"  # "disabled", "enabled", "validate_only"
+IA_parallel: false     # Parallel IA steps via ThreadPoolExecutor (one LLM call per step)
+IA_max_workers: 4      # Number of parallel workers for IA step analysis
+
+# ========================================================================
+# FFA Assessment (FFA) - Fitness for Automation assessment
+# ========================================================================
+
+FFA_system_prompt_id: "automation_expert_v1"  # Automation expert system message
+FFA_human_prompt_id: "ffa_assessment_task_v1"  # Task: FFA criteria evaluation
+
+# FFA Assessment (FFA) - Settings
+FFA_mode: "enabled"  # "disabled", "enabled", "validate_only" (validate_only skips assessment if ffa_assessment.json exists)
+FFA_include_interaction_analysis: true  # Append interaction analysis to FFA step prompt? (default: enabled)
+FFA_step_img_keywords: ["iso1_transp_0_3"]  # Step images to include in FFA assessment (can filter to reduce tokens)
+FFA_prior_step_img_keywords: ["iso1_transp_0_3"]  # Prior step images to show assembly state BEFORE current step (empty if step_id==1)
+FFA_base_part_json_keys: ["part_id", "part_name_guess"] # Keys to extract from base part metadata
+FFA_joining_part_json_keys: ["part_id", "part_name_guess", "positional_aids", "gripping_description", "material_info", "packaging_info"]  # Keys to extract from joining part metadata
+FFA_enriched_dir_name: "enriched_parts"  # Subdirectory name for enriched part JSONs (under stepparser output)
+FFA_image_downscale: 0.7  # DEPRECATED - Use global image_downscale_factor instead (kept for backward compatibility)
+FFA_max_completion_tokens: 4000  # LLM output token limit per step assessment
+FFA_save_per_step: false  # If true, save individual step assessments (step_{id}_ffa.json)
+FFA_parallel: false       # Parallel FFA assessment via ThreadPoolExecutor (one LLM call per step)
+FFA_max_workers: 4        # Number of parallel workers for FFA step assessment

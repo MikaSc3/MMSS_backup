@@ -1,0 +1,14 @@
+# Automation planner settings.
+
+llm_model: "5.4"
+max_completion_tokens: 16000
+max_context_chars: 24000
+
+module_max_completion_tokens:
+  initial_requirements: 8000
+  process_principles: 16000
+  automation_variant: 12000
+  layout_planer: 10000
+
+# Optional free text, for example corrected part-provisioning assumptions.
+user_feedback: ""

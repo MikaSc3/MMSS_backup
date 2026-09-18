@@ -1,0 +1,83 @@
+
+# ─── Global ──────────────────────────────────────────────────────────────────
+repetitions: 1
+
+content_workflow_agent_prompt_id: "content_workflow_agent_v3"
+readadditional_data_tool_prompt_id: "readadditional_data_tool_v1"
+
+
+
+base_system_prompt_id: "assembly_analyst_v2_0"
+llm_model: "5.4"
+rendering_headless_mode: true
+image_downscale_factor: 0.7
+img_to_analyse_assy: ["iso1_transp_0_0", "iso1_exp_transp_0_0"]
+img_to_analyse_monopart: ["iso1_transp_0_0"]
+use_assembly_context: true
+workflow_print: true
+use_gt_renderings: true
+# Monopart analysis runs in parallel (one LLM call per part, no shared state)
+parallel: true
+max_workers: 6
+
+# ─── Assembly Analysis Image (AAI) ───────────────────────────────────────────
+AAI_system_prompt_id: "assembly_analyst_v2_0"
+AAI_human_prompt_id: "assembly_analysis_task_v2_0"
+AAI_json_file_keyword: "Overview_Stepparser"
+AAI_json_keys: ["total_parts", "unique_parts", "bounding_box"]
+
+# ─── Monopart Analysis Image (AMI) ───────────────────────────────────────────
+AMI_system_prompt_id: "monopart_analyst_v2_0"
+AMI_human_prompt_id: "monopart_analysis_task_v2_0"
+AMI_assembly_json_file_keyword: "Overview_Enriched"
+AMI_assembly_json_keys: ["assembly_name_guess", "primary_function","assembly_description", "partslist", "total_parts", "unique_parts"]
+AMI_json_file_keyword: "Data_stepparser"
+AMI_json_keys: ["part_id", "volume", "bounding_box", "color"]
+AMI_assembly_img_keywords: ["NONE"]  # Assembly reference image added to each monopart prompt
+AMI_assembly_img_limit: 1          # One assembly overview image is enough as spatial context
+
+# ─── Assembly Sequence Generation ───────────────────────────────
+
+# Assembly sequence generation (handles remarks internally)
+ASG_system_prompt_id: assembly_sequence_planner_expert_v1
+ASG_human_prompt_id: generate_assembly_sequence_task_v3                     # Use existing from default_settings
+ASG_image_keywords: ["iso1_transp_0_0", "iso1_exp_transp_0_0"]
+ASG_include_bom: true
+ASG_include_agent1_context: true
+ASG_max_completion_tokens: 8000
+
+# ─── Assembly Sequence Validation (ASV) ─────────────────────────────────────
+# Rendering is enabled independently of ASV (section views needed for IA)
+enable_step_rendering: true   # Render step ISO + section views (default: true)
+# 0.0 (opaque) is always included automatically – required for section + explosion views
+ASV_transparency_values: [0.0]  # ISO views: opaque only (add 0.3 etc. for additional transparent passes)
+ASV_mode: "disabled"
+
+# ─── Interaction Analysis (IA) ────────────────────────────────────────────────
+IA_system_prompt_id: "Interaction_Analyst_V2_0"
+IA_human_prompt_id: "Analyse_Interaction_V2_0"
+IA_sequence_step_img_keywords: ["section_xy", "section_xz", "iso1_transp_0_0"]
+IA_monopart_img_keywords: ["NONE"]
+IA_base_part_json_keys: ["part_id", "part_name_guess", "volume", "part_identification", "monopart_analysis.geometric_characteristics", "monopart_analysis.material_and_mechanical_behavior", "monopart_analysis.intrinsic_summary"]  
+IA_joining_part_json_keys: ["part_id", "part_name_guess", "volume", "part_identification", "monopart_analysis.geometric_characteristics", "monopart_analysis.material_and_mechanical_behavior", "monopart_analysis.intrinsic_summary"]    
+IA_include_monopart_renderings: false
+IA_mode: "enabled"
+IA_parallel: true    # Parallelize IA steps (each step is an independent LLM call)
+IA_max_workers: 6
+
+# ─── FFA Assessment (FFA) ────────────────────────────────────────────────────
+FFA_system_prompt_id: "automation_expert_v2_0_critical"
+FFA_human_prompt_id: "ffa_assessment_task_v2_0_base"
+llm_model_ffa: "5.4"
+FFA_explanation_level: "full"  # or "with_explanations" or "full" or "minimal"
+FFA_mode: "enabled"
+FFA_include_interaction_analysis: true
+FFA_step_img_keywords: ["iso1_transp_0_0"]
+FFA_prior_step_img_keywords: ["iso1_transp_0_0"]
+FFA_base_part_json_keys: ["part_id", "part_name_guess", "part_identification", "monopart_analysis.geometric_characteristics"]
+FFA_joining_part_json_keys: ["part_id", "part_name_guess", "part_identification", "monopart_analysis.geometric_characteristics", "monopart_analysis.nature_of_provision_guess", "monopart_analysis.handling_implications"]   
+FFA_enriched_dir_name: "enriched_parts"
+FFA_max_completion_tokens: 4000
+FFA_save_per_step: false
+FFA_parallel: true   # Parallelize FFA steps (each step is independent)
+FFA_max_workers: 6

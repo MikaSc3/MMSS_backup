@@ -1,0 +1,16 @@
+name: apa-occ
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.12
+  - pythonocc-core=7.9
+  - pyqt=5
+  - pip
+  - pip:
+      - langgraph>=1,<2
+      - langchain>=1,<2
+      - langchain-openai>=1,<2
+      - streamlit>=1,<2
+      - python-dotenv>=1,<2
+      - "markitdown[all]>=0.1,<1"

@@ -1,0 +1,93 @@
+# Experiment: Assembly Sequence from Ground Truth (Baseline)
+#
+# In this workflow the LLM does NOT determine the assembly order.
+# step_id, belongs_to, base_part, joining_part are taken from:
+#   data/ground_truth/assembly_sequence_ground_truth/{assembly_name}/sequence.json
+#
+# The LLM only generates:
+#   - step_description  (human-readable description of the step)
+#   - joining_process   (e.g. "Insert", "Screw", "Press", ...)
+#
+# All other settings follow the full-workflow experiment structure.
+# See configs/full_workflow/expX_most_info.yaml for all available keys.
+
+# ─── Global ──────────────────────────────────────────────────────────────────
+repetitions: 7
+base_system_prompt_id: "cad_analysis_expert_v1"
+llm_model: "4o"
+rendering_headless_mode: true
+image_downscale_factor: 0.7
+img_to_analyse_assy: ["iso1_transp_0_0", "iso1_exp_transp_0_0"]
+img_to_analyse_monopart: ["iso1_transp_0_0"]
+use_assembly_context: true
+workflow_print: true
+use_gt_renderings: true
+# Monopart analysis runs in parallel (one LLM call per part, no shared state)
+parallel: true
+max_workers: 12
+
+# ─── Assembly Analysis Image (AAI) ───────────────────────────────────────────
+AAI_system_prompt_id: "assembly_analyst_v1"
+AAI_human_prompt_id: "assembly_analysis_task_v1"
+AAI_json_file_keyword: "Overview_Stepparser"
+AAI_json_keys: ["total_parts", "unique_parts", "bounding_box"]
+
+# ─── Monopart Analysis Image (AMI) ───────────────────────────────────────────
+AMI_system_prompt_id: "monopart_analyst_v1"
+AMI_human_prompt_id: "monopart_analysis_task_v3"
+AMI_assembly_json_file_keyword: "Overview_Enriched"
+AMI_assembly_json_keys: ["assembly_name_guess", "assembly_description", "total_parts", "unique_parts"]
+AMI_json_file_keyword: "Data_stepparser"
+AMI_json_keys: ["part_id", "volume", "bounding_box", "color"]
+AMI_assembly_img_keywords: ["iso1_exp_transp_0_0"]  # Assembly reference image added to each monopart prompt
+AMI_assembly_img_limit: 1          # One assembly overview image is enough as spatial context
+
+# ─── Assembly Sequence from Ground Truth (ASGT) ───────────────────────────────
+# These settings control the GT-description step.
+# The structural fields (step_id, base_part, joining_part, belongs_to) come
+# from the GT file — the LLM only fills step_description + joining_process.
+ASGT_system_prompt_id: "assembly_sequence_gt_describer_v1"
+ASGT_human_prompt_id: "generate_step_descriptions_from_gt_v1"
+ASGT_image_keywords: ["iso1_transp_0_0", "iso1_exp_transp_0_0"]
+ASGT_json_file_keyword: "BOM_enriched"
+ASGT_json_keys: ["part_id", "part_name_guess", "part_is_touching"]
+ASGT_use_additional_info: false
+ASGT_include_images: true
+ASGT_include_bom: true
+ASGT_max_completion_tokens: 8000
+ASGT_max_json_chars: 10000
+ASGT_downscale_images: 0.7
+
+# ─── Assembly Sequence Validation (ASV) ─────────────────────────────────────
+# Rendering is enabled independently of ASV (section views needed for IA)
+enable_step_rendering: true   # Render step ISO + section views (default: true)
+# 0.0 (opaque) is always included automatically – required for section + explosion views
+ASV_transparency_values: [0.0]  # ISO views: opaque only (add 0.3 etc. for additional transparent passes)
+ASV_mode: "disabled"
+
+# ─── Interaction Analysis (IA) ────────────────────────────────────────────────
+IA_system_prompt_id: "Interaction_Analyst_V2"
+IA_human_prompt_id: "Analyse_Interaction_V2"
+IA_sequence_step_img_keywords: ["section_xy", "section_xz", "iso1_transp_0_0"]
+IA_monopart_img_keywords: ["iso1_transp_0_0"]
+IA_base_part_json_keys: ["part_id", "part_name_guess"]
+IA_joining_part_json_keys: ["part_id", "part_name_guess", "part_is_touching", "volume", "part_identification", "monopart_analysis"]
+IA_include_monopart_renderings: false
+IA_mode: "enabled"
+IA_parallel: true    # Parallelize IA steps (each step is an independent LLM call)
+IA_max_workers: 12
+
+# ─── FFA Assessment (FFA) ────────────────────────────────────────────────────
+FFA_system_prompt_id: "automation_expert_v2_neutral"
+FFA_human_prompt_id: "ffa_assessment_task_v3_with_explanation_examples_guidelines"
+FFA_mode: "enabled"
+FFA_include_interaction_analysis: true
+FFA_step_img_keywords: ["iso1_transp_0_0"]
+FFA_prior_step_img_keywords: ["iso1_transp_0_0"]
+FFA_base_part_json_keys: ["part_id", "part_name_guess", "part_identification"]
+FFA_joining_part_json_keys: ["part_id", "part_name_guess", "part_identification", "monopart_analysis"]
+FFA_enriched_dir_name: "enriched_parts"
+FFA_max_completion_tokens: 4000
+FFA_save_per_step: false
+FFA_parallel: true   # Parallelize FFA steps (each step is independent)
+FFA_max_workers: 12
