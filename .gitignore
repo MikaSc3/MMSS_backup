@@ -10,4 +10,6 @@
 Agent*.txt
 data/
 *.env
+.env
+.env.*
 
