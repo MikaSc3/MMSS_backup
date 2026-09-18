@@ -1,6 +1,6 @@
 # AGENT Project Introduction
 
-Last updated: 2026-06-15
+Last updated: 2026-09-18
 
 This document is a fast handoff for coding agents working on this repository. It captures the project shape, entry points, moving parts, and local conventions so an agent can start productively without rediscovering the basics.
 
@@ -36,6 +36,8 @@ The root was recently cleaned up. Keep this layout unless the user asks otherwis
 6_open_streamlit_app.py
 7_run_app_workflow_AGENT_terminal.py
 8_open_streamlit_app_v3.py
+9_run_automationplanner_on_session.py
+10_run_layout_generation.py
 env-latest.yaml
 docs/
 scripts/
@@ -316,6 +318,60 @@ The Streamlit app packages all available report PDFs into one ZIP download.
 - The generic system Python may lack Matplotlib, pandas, LangChain, or
   pythonOCC. Syntax checks can still use `python -m py_compile`, but full
   workflow/report tests need the real project environment.
+
+## Automation Planner And Layout Generation
+
+Scripts 9 and 10 extend the completed App V3 session with automation planning
+and layout visualization. The design specification is
+[Automatisierungsplaner.spec.md](Automatisierungsplaner.spec.md).
+They run in the terminal after the FfA report is available.
+
+### 9. Run Automation Planning On An Existing Session
+
+```powershell
+python 9_run_automationplanner_on_session.py --session-root "data/sessions_v3/<session>"
+```
+
+- Reads the existing assembly overview, enriched BOM/parts, assembly sequence,
+  interaction analysis, FfA assessment/report, and additional context.
+- Generates initial requirements, per-step process principles, automation
+  variants, and layout plans for `manuell`, `halbautomatisiert`, and
+  `vollautomatisiert` using `agent/automation_planner.py`.
+- Writes results under the session's `automation_planner/` directory:
+  `01_initiale_anforderungsklaerung.json`, `02_prozessprinzipien/`,
+  `03_automatisierungsvarianten/`, `03a_layoutplanung/`, and
+  `automation_planner_summary.md`.
+- Loads settings from `configs/automationplanner.yaml`; override with
+  `--config`. Optional context uses `--feedback`, `--feedback-file`, and
+  `--max-context-chars`.
+- Reuses existing structured results on subsequent runs. CAD preprocessing,
+  sequence generation, interaction analysis, and FfA are not rerun.
+
+The specification also describes modules 4-6 (variant evaluation, station
+planning, and detailed workplace design) and future V3 tools. The current
+launcher runs modules 1-3 plus layout planning.
+
+### 10. Generate Station And Overall Layout Images
+
+Run after script 9 has produced automation variants:
+
+```powershell
+python 10_run_layout_generation.py --automation-planner-dir "data/sessions_v3/<session>/automation_planner"
+```
+
+- Uses `agent/layout_generator.py` to render box-based station and overall
+  layouts from `03_automatisierungsvarianten/variante_{strategie}.json`, using
+  `03a_layoutplanung/layout_{strategie}.json` when available.
+- Writes PNG/SVG images and `layout_manifest.json` under
+  `automation_planner/03a_layouts/{strategie}/`.
+- Renders all three strategies by default. Repeat `--strategy` to select
+  strategies; adjust scale, padding, and equipment box dimensions with
+  `--pixels-per-cm`, `--padding-cm`, `--box-width-cm`, and `--box-height-cm`.
+- Rendering is deterministic and does not make LLM calls.
+
+Both scripts have editable default paths near the top. Those defaults reference
+another local checkout, so pass the session/planner paths explicitly or update
+the constants before running them here.
 
 ### 2. Export Assembly Sequence Ground Truth
 
