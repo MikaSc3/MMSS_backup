@@ -9,3 +9,4 @@
 *.html
 Agent*.txt
 data/
+*.env
