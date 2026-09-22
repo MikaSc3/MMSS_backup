@@ -17,10 +17,10 @@ def _number(value: Any, name: str, minimum: float = 0) -> None:
 @dataclass(frozen=True)
 class RenderingSettings:
     enabled: bool = True
-    assembly_views: tuple[str, ...] = ("iso1", "iso4", "front", "top", "right")
-    part_views: tuple[str, ...] = ("iso1", "iso4")
-    exploded_views: tuple[str, ...] = ("iso1",)
-    highlighted_view: str | None = None
+    assembly_views: tuple[str, ...] = ("iso1","iso2","iso3","iso4", "front", "right")
+    part_views: tuple[str, ...] = ("iso1","iso2","iso3","iso4", "front", "top", "right")
+    exploded_views: tuple[str, ...] = ("iso1","iso2","iso3","iso4")
+    highlighted_view: str | None = "iso1"
     transparency_values: tuple[float, ...] = (0.0,)
     resolution: tuple[int, int] = (1920, 1080)
     explosion_factor: float = 2.5
@@ -29,12 +29,18 @@ class RenderingSettings:
     material_shininess: float = 0.1
     show_origin_axes: bool = True
     origin_axes_size_ratio: float = 0.2
+    crop_whitespace: bool = True
+    crop_padding_px: int = 16
 
     def __post_init__(self):
         if not isinstance(self.enabled, bool):
             raise ValueError("rendering.enabled must be boolean")
         if not isinstance(self.show_origin_axes, bool):
             raise ValueError("show_origin_axes must be boolean")
+        if type(self.crop_whitespace) is not bool:
+            raise ValueError("rendering.crop_whitespace must be boolean")
+        if type(self.crop_padding_px) is not int or self.crop_padding_px < 0:
+            raise ValueError("rendering.crop_padding_px must be a nonnegative integer")
         _number(self.origin_axes_size_ratio, "origin_axes_size_ratio", 0.001)
         for names in (self.assembly_views, self.part_views, self.exploded_views):
             if not isinstance(names, (list, tuple)) or any(not isinstance(n, str) for n in names):
@@ -67,11 +73,30 @@ class RenderingSettings:
 
 
 @dataclass(frozen=True)
+class GeometrySettings:
+    include_surface_details: bool = False
+    include_size: bool = True
+    include_oriented_box: bool = False
+    include_axis_aligned_box: bool = False
+
+    def __post_init__(self):
+        if type(self.include_size) is not bool:
+            raise ValueError("geometry.include_size must be boolean")
+        if type(self.include_surface_details) is not bool:
+            raise ValueError("geometry.include_surface_details must be boolean")
+        if type(self.include_oriented_box) is not bool:
+            raise ValueError("geometry.include_oriented_box must be boolean")
+        if type(self.include_axis_aligned_box) is not bool:
+            raise ValueError("geometry.include_axis_aligned_box must be boolean")
+
+
+@dataclass(frozen=True)
 class SpatialSettings:
     enabled: bool = True
     contact_tolerance_mm: float = 0.01
     proximity_threshold_mm: float = 3.0
     distance_mode: str = "all_pairs"
+    multithread: bool = True
 
     def __post_init__(self):
         if not isinstance(self.enabled, bool):
@@ -80,8 +105,33 @@ class SpatialSettings:
         _number(self.proximity_threshold_mm, "proximity_threshold_mm")
         if self.proximity_threshold_mm < self.contact_tolerance_mm:
             raise ValueError("proximity_threshold_mm must be >= contact_tolerance_mm")
-        if self.distance_mode != "all_pairs":
-            raise ValueError("Only all_pairs distance mode is implemented")
+        if self.distance_mode not in ("all_pairs", "nearby_pairs"):
+            raise ValueError("distance_mode must be all_pairs or nearby_pairs")
+        if type(self.multithread) is not bool:
+            raise ValueError("spatial_relations.multithread must be boolean")
+
+
+@dataclass(frozen=True)
+class InterlockingSettings:
+    enabled: bool = True
+    mode: str = "contact_direction_proxy"
+    sample_count: int = 4
+    minimum_travel_mm: float = 10.0
+    interference_tolerance_mm: float = 1e-6
+    directional_cosine_threshold: float = 0.5
+
+    def __post_init__(self):
+        if type(self.enabled) is not bool:
+            raise ValueError("interlocking.enabled must be boolean")
+        if self.mode not in ("contact_direction_proxy", "sampled_clearance"):
+            raise ValueError("interlocking.mode must be contact_direction_proxy or sampled_clearance")
+        if type(self.sample_count) is not int or self.sample_count < 2:
+            raise ValueError("interlocking.sample_count must be an integer >= 2")
+        _number(self.minimum_travel_mm, "interlocking.minimum_travel_mm", 0.001)
+        _number(self.interference_tolerance_mm, "interlocking.interference_tolerance_mm")
+        _number(self.directional_cosine_threshold, "interlocking.directional_cosine_threshold")
+        if self.directional_cosine_threshold > 1:
+            raise ValueError("interlocking.directional_cosine_threshold must be <= 1")
 
 
 @dataclass(frozen=True)
@@ -123,11 +173,15 @@ class ImageSelectionSettings:
     analysis_size: int = 128
     tile_size: tuple[int, int] = (960, 540)
     assembly_entropy_weight: float = 0.15
+    crop_whitespace: bool = True
+    crop_padding_px: int = 12
 
     def __post_init__(self):
-        for name in ("enabled", "include_exploded"):
+        for name in ("enabled", "include_exploded", "crop_whitespace"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"automaticimageselection.{name} must be boolean")
+        if type(self.crop_padding_px) is not int or self.crop_padding_px < 0:
+            raise ValueError("automaticimageselection.crop_padding_px must be a nonnegative integer")
         if type(self.analysis_size) is not int or not 32 <= self.analysis_size <= 512:
             raise ValueError("analysis_size must be an integer from 32 to 512")
         if not isinstance(self.tile_size, (tuple, list)) or len(self.tile_size) != 2 or any(type(v) is not int or v < 1 for v in self.tile_size):
@@ -150,8 +204,10 @@ def _construct(cls, value: dict):
 @dataclass(frozen=True)
 class StepParserSettings:
     color_mode: str = "geometry"
+    geometry: GeometrySettings = GeometrySettings()
     rendering: RenderingSettings = RenderingSettings()
     spatial_relations: SpatialSettings = SpatialSettings()
+    interlocking: InterlockingSettings = InterlockingSettings()
     sam: SamSettings = SamSettings()
     automaticimageselection: ImageSelectionSettings = ImageSelectionSettings()
 
@@ -163,12 +219,14 @@ class StepParserSettings:
     def from_mapping(cls, value: dict) -> "StepParserSettings":
         if not isinstance(value, dict):
             raise ValueError("step_preprocessing settings must be a mapping")
-        unknown = set(value) - {"color_mode", "rendering", "spatial_relations", "sam", "automaticimageselection"}
+        unknown = set(value) - {"color_mode", "geometry", "rendering", "spatial_relations", "interlocking", "sam", "automaticimageselection"}
         if unknown:
             raise ValueError(f"Unknown preprocessing settings: {sorted(unknown)}")
         return cls(color_mode=value.get("color_mode", "geometry"),
+                   geometry=_construct(GeometrySettings, value.get("geometry", {})),
                    rendering=_construct(RenderingSettings, value.get("rendering", {})),
                    spatial_relations=_construct(SpatialSettings, value.get("spatial_relations", {})),
+                   interlocking=_construct(InterlockingSettings, value.get("interlocking", {})),
                    sam=_construct(SamSettings, value.get("sam", {})),
                    automaticimageselection=_construct(ImageSelectionSettings, value.get("automaticimageselection", {})))
 

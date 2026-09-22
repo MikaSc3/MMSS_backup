@@ -18,7 +18,7 @@ class PartInstance:
     instance_id: str
     part_id: str
     name: str
-    assembly_id: str
+    assembly_id: str | None
     source_path: list[str]
     location: Any
     shape: Any

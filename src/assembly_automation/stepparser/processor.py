@@ -8,7 +8,11 @@ import time
 
 from .analysis.geometry import bounding_box, measure_shape, validate_shape, xyz
 from .analysis.spatial_relations import compute_spatial_relations
+from .analysis.center_of_mass import com_distances
+from .analysis.interlocking import analyze_interlocking
 from .io.metadata_manager import write_json
+from .io.assembly_export import build_assembly_json
+from .io.bom_export import without_status_fields
 from .io.step_loader import load_step, transform_matrix
 from .rendering.color_generator import assign_colors
 from .settings import StepParserSettings
@@ -67,10 +71,23 @@ class StepProcessor:
 
             begin("geometry")
             for index, definition in enumerate(loaded.definitions, 1):
-                definition.geometry = measure_shape(definition.shape)
+                definition.geometry = measure_shape(definition.shape,
+                    detailed=self.settings.geometry.include_surface_details,
+                    include_size=self.settings.geometry.include_size,
+                    include_axis_aligned_box=self.settings.geometry.include_axis_aligned_box,
+                    include_oriented_box=self.settings.geometry.include_oriented_box)
                 if progress:
                     progress("geometry", index, len(loaded.definitions))
-            aggregate = measure_shape(loaded.shape, detailed=False, coordinate_frame="assembly")
+            aggregate = measure_shape(loaded.shape, detailed=False,
+                include_size=self.settings.geometry.include_size,
+                include_axis_aligned_box=self.settings.geometry.include_axis_aligned_box,
+                include_oriented_box=self.settings.geometry.include_oriented_box, coordinate_frame="assembly")
+            manifest["assembly_geometry_status"] = {key: value for key, value in aggregate.items()
+                                                     if key == "status" or key.endswith("_status")}
+            manifest["part_geometry_status"] = {
+                d.part_id: {key: value for key, value in d.geometry.items()
+                            if key == "status" or key.endswith("_status")}
+                for d in loaded.definitions}
             done()
 
             begin("colors")
@@ -79,9 +96,21 @@ class StepProcessor:
 
             begin("spatial_relations")
             relations = compute_spatial_relations(loaded.instances, self.settings.spatial_relations, progress)
+            manifest["spatial_relations_statistics"] = relations["statistics"]
             if relations["status"] == "partial":
-                manifest["warnings"].append("Some pairwise distances failed; inspect spatial_relations.pairs")
+                manifest["warnings"].append("Some pairwise distances failed; inspect spatial_relations.json pairs")
                 manifest["stages"][stage] = "partial"
+            else:
+                done()
+
+            begin("interlocking")
+            interlocking = analyze_interlocking(loaded.instances, self.settings.interlocking, relations,
+                                                progress=progress)
+            if interlocking["status"] == "partial":
+                manifest["warnings"].append("Some removal-direction checks failed; inspect interlocking.json")
+                manifest["stages"][stage] = "partial"
+            elif interlocking["status"] == "disabled":
+                manifest["stages"][stage] = "disabled"
             else:
                 done()
 
@@ -101,20 +130,23 @@ class StepProcessor:
                                   "source_path": instance.source_path, "color": instance.color,
                                   "placement": {"coordinate_frame": "part_local_to_assembly",
                                                 "matrix": transform_matrix(instance.location)},
-                                  "bounding_box": bounding_box(instance.shape), "center_of_mass": world_com})
+                                  "center_of_mass": world_com})
+                if self.settings.geometry.include_axis_aligned_box:
+                    instances[-1]["bounding_box"] = bounding_box(instance.shape)
             bom = {"schema_version": "1.0", "units": loaded.units,
                    "grouping_method": "STEP_definition_identity",
                    "parts": [{"part_id": d.part_id, "name": d.name, "source_definition": d.source_definition,
                               "quantity": quantities[d.part_id], "color": d.color,
-                              "validity": d.validity, "geometry": d.geometry} for d in loaded.definitions],
-                   "instances": instances}
-            assembly = {"schema_version": "1.0", "assembly_id": "assy_001", "name": loaded.name,
-                        "units": loaded.units, "total_parts": len(instances), "unique_parts": len(loaded.definitions),
-                        "hierarchy": loaded.hierarchy, "validity": aggregate_validity,
-                        "geometry": aggregate, "spatial_relations": relations}
+                              "geometry": without_status_fields(d.geometry)} for d in loaded.definitions],
+                   "instances": without_status_fields(instances)}
+            assembly = build_assembly_json(loaded, aggregate)
+            relations["com_pairs"] = com_distances(instances)
             write_json(output / "bom.json", bom)
             write_json(output / "assembly.json", assembly)
-            manifest["artifacts"] = ["bom.json", "assembly.json"]
+            write_json(output / "spatial_relations.json",
+                       {"schema_version": "1.0", "assembly_id": assembly["assembly_id"], **relations})
+            write_json(output / "interlocking.json", interlocking)
+            manifest["artifacts"] = ["bom.json", "assembly.json", "spatial_relations.json", "interlocking.json"]
             done()
 
             begin("rendering")

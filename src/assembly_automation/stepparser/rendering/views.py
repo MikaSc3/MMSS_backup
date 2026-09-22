@@ -18,7 +18,6 @@ VIEWS = MappingProxyType({
     "iso2": CameraView((-1, 1, -1)),
     "iso3": CameraView((1, -1, -1)),
     "iso4": CameraView((1, -1, 1)),
-    "legacy_iso4": CameraView((-1, 1, -1)),
     "front": CameraView((0, -1, 0)),
     "rear": CameraView((0, 1, 0)),
     "right": CameraView((1, 0, 0)),

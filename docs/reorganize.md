@@ -1,6 +1,6 @@
 # App V3 code reorganization plan
 
-Date: 2026-09-18. Status: incremental rebuild started; existing implementation remains active.
+Updated: 2026-09-21. Status: standalone STEP parser complete; workflow migration in progress.
 
 ## Rebuild approach and current progress
 
@@ -11,23 +11,49 @@ new directory layout. Adapters are temporary compatibility tools, not the final
 architecture. Optimize redundant reads, payload construction, merging, and rerun
 work after identifying their consumers and preserving behavior.
 
-Created the installable package foundation, module/node directories, an explicit
-recursive configuration loader, and a draft `configs/appsettingsv3.yaml` for the
-first node. Existing launchers/configs remain active. Prompt/schema IDs in the
-draft are reserved; it is not an executable replacement config yet.
+Created the installable package foundation, module/node directories and explicit
+recursive configuration loader. The standalone STEP parser is implemented under
+`src/assembly_automation/stepparser`; its active settings are executable under
+`nodes.step_preprocessing` in `configs/appsettingsv3.yaml`. It now covers XCAF
+loading, real hierarchy, validation, geometry, deterministic colors, spatial and
+COM relations, directional interlocking evidence, rendering, optional SAM,
+automatic image selection and saved-run relationship diagrams. Its current
+contract and operating instructions live in `stepparser/stepparser.md`.
 
-Next extraction: inspect `analyse_assembly_img` and its image-describer call chain
-in full; bring over the active assembly prompts and `AssemblyAnalysis` schema;
-implement its input builder and pure result contract. Then implement monopart
-analysis, copy/BOM merging, sequence generation/revision, sequence rendering,
-interaction analysis, FfA classification/scoring, and reporting in that order.
+The next milestone is one complete workflow slice from STEP input through
+assembly analysis:
+
+1. **Complete:** `workflows/nodes/step_preprocessing` is a thin adapter around
+   `StepProcessor`. It accepts explicit input/output paths and returns artifact
+   references without duplicating parser logic.
+2. **Implemented, live run pending:** `assembly_analysis` owns `node.py`,
+   `inputs.py`, `prompts.yaml` and `structured_output.py` and no longer needs the
+   legacy image-describer call chain.
+3. **Implemented:** shared runtime code resolves prompts and configured inputs,
+   creates provider-specific models, runs structured output, records execution
+   metadata and resolves allowlisted optional tools.
+4. **Implemented:** the node reads semantic parser artifacts (`assembly`, `bom`,
+   `images` and optional spatial/interlocking inputs) and can atomically write
+   `assembly_overview.json`. Offline contract tests pass; a live model run remains.
+5. Add a compatibility adapter so working App V3 can call the new node while the
+   rest of the legacy workflow remains unchanged.
+
+`monopart_analysis` is also implemented as a single-part invocation using the
+same runtime. Its workflow fan-out and live model check remain pending. The
+deterministic `bom_merge` node replaces both legacy copy enrichment and BOM
+concatenation: analysis lives once on each unique definition and placed copies
+remain in the unchanged `instances` list. `sequence_generation` now supports
+explicit `generate` and `revise` modes. Revision requires the initially generated
+sequence plus a separate summarized user-feedback input. Continue with sequence
+rendering, interaction analysis, FfA classification/scoring and reporting.
 Connect the user agent and UI after their workflow/data interfaces are available.
 
 Structural deletion waits until the replacement has passed its relevant checks.
-The current shell has no `python`, `py`, or `conda` on PATH, and the checked-in
-venv references another machine. Subsequent inspection found a Python 3.14
-interpreter at `C:/Users/Mika/miniconda3/python.exe`, but it lacks PyYAML.
-Runtime checks still require the actual project environment before claiming parity.
+The working CAD environment is
+`C:/Users/Mika/miniforge3/envs/apa-occ/python.exe` (Python 3.12 with pythonOCC
+7.9). Run CAD-related checks with that interpreter directly; the checked-in venv
+still references another machine. The focused standalone parser suite currently
+passes 30 tests.
 
 ## Goal and boundaries
 
@@ -184,35 +210,71 @@ Main configuration: `configs/appsettingsv3.yaml`. Resolve defaults -> main confi
 
 ```yaml
 workflow: assembly_assessment
-user_agent:
-  system_prompt: system_v1
+llms:
+  profiles:
+    gpt_5_4:
+      provider: azure_openai_v1
+      model: gpt-5.4
+      endpoint_env: AZURE_ENDPOINT_54
+      api_key_env: API_KEY_GPT_5
+    llama_local:
+      provider: openai_compatible
+      model: llama3.2-vision
+      base_url: http://localhost:11434/v1
 nodes:
   assembly_analysis:
     enabled: true
+    llm:
+      profile: gpt_5_4
+      max_completion_tokens: 4000
     prompts:
       system: system_v1
       human: human_v1
     structured_output: assembly_analysis_v1
-    model:
-      id: "5.4"
-      max_completion_tokens: 8000
+    tools: []
     inputs:
       assembly_metadata:
         enabled: true
-        fields: [total_parts, unique_parts, bounding_box]
+        required: true
+        kind: json
+        source: assembly
+        fields: [total_parts, unique_parts, geometry.size]
       assembly_images:
         enabled: true
-        views: [iso1, iso1_exploded]
-        limit: 2
+        required: true
+        kind: images
+        source: images
+        path: assembly
+        patterns: [collage_assembly.png]
+        limit: 1
         downscale_factor: 0.7
       user_context:
         enabled: true
+        kind: text
+        source: user_context
         max_chars: 12000
     execution:
-      max_retries: 2
+      max_tool_rounds: 4
 ```
 
-A vanilla LLM node declares required artifact inputs, builds a configured prompt payload, resolves local prompt/schema IDs, executes via shared infrastructure, validates its output, and returns a structured result plus artifact references. Runtime saves actual token usage, elapsed time, model identity, prompt texts/hashes, schema version, effective settings, selected inputs/revisions, and failure details. Config specifies token budgets; actual usage is measured.
+A vanilla LLM node declares required artifact inputs, builds a configured prompt payload, resolves local prompt/schema IDs, executes via shared infrastructure, validates its output, and returns a structured result plus artifact references. Runtime saves actual token usage, elapsed time, model identity, prompt hashes, schema version, selected inputs and tool-call counts. Config specifies token budgets; actual usage is measured.
+
+The prompt builder handles JSON field selection, optional list-item selection,
+text blocks and deterministic image selection. Input sources are semantic artifact
+keys supplied by the workflow, so nodes do not search for legacy filenames.
+Paths and patterns may use invocation variables such as `{part_id}`.
+
+Workflow definitions own fan-out. `assembly_analysis` invokes once. The
+implemented `monopart_analysis` node analyzes exactly one unique `part_id`; its
+future workflow reads the BOM, creates one invocation context per unique part,
+and calls the node for each. Parallelism, retry and result aggregation stay in
+workflow execution instead of the node or prompt builder.
+
+Models are named profiles under `llms.profiles`. A node selects a profile and may
+override bounded generation settings. The current factory supports Azure OpenAI,
+Azure's OpenAI-compatible v1 endpoint, OpenAI and local/OpenAI-compatible servers.
+Optional tools are node-local allowlists resolved against a runtime registry; an
+empty list means the model receives no tools.
 
 Preserve nested JSON field selectors, image filters/limits/downscaling, context toggles, generation/revision prompts, examples, model overrides, and parallel worker settings from the existing configs. Translate legacy `AAI`, `AMI`, `ASG`, `IA`, `FFA`, and reporter settings explicitly; do not silently discard settings. Map existing filename keywords and `NONE` sentinels to semantic sources and explicit enabled flags.
 
@@ -248,7 +310,7 @@ Provide a reader adapter for existing `sessions_v3`, `Agent_txt_files`, enriched
 
 The inspected baseline is `data/sessions_v3/2026-09-17_143937_Stehlager_Sicherungsring`. Its overview combines CAD facts with analyst text; its BOM combines geometry and inferred monopart analyses. The BOM records an absolute datasource path from another checkout. Replace new stored references with session-relative artifact references and resolve old references through the compatibility layer.
 
-The consolidated BOM becomes authoritative for unique-part geometry, detailed surfaces and placed instances; no separate part-metadata files are required. Assembly metadata and spatial relations belong in `assembly.json`. Preserve geometry-vs-instance relationships and copied instances. Keep original CAD facts as source evidence; user corrections are explicit overrides rather than destructive changes to original metadata.
+The consolidated BOM becomes authoritative for unique-part geometry, optional detailed surfaces and placed instances; no separate part-metadata files are required. Assembly metadata belongs in `assembly.json`, with a relative file reference to the separate `spatial_relations.json`. Preserve geometry-vs-instance relationships and copied instances. Keep original CAD facts as source evidence; user corrections are explicit overrides rather than destructive changes to original metadata.
 
 Both direct UI edits and agent edits use one validated revision service. Preserve previous values, author/source, reason, and dependency provenance. Prevent stale edits and writes to results currently being regenerated. Mark affected descendants outdated; rerun only the affected dependency closure. Revoke sequence approval when the sequence changes. Keep report discussion grounded in the active result revisions.
 
@@ -290,3 +352,40 @@ The registered `C:/Users/Mika/miniforge3/envs/apa-occ` environment was located
 and used for thirteen focused checks, a real-example geometry run and rendering
 checks. App V3 integration, artifact editing/revisions and remaining workflow
 extractions are pending. The legacy parser and original session data remain intact.
+
+## Sequence rendering implementation progress (2026-09-21)
+
+The deterministic `sequence_rendering` node now lives under
+`src/assembly_automation/workflows/nodes/sequence_rendering`. It accepts an
+explicit STEP file, approved sequence, enriched BOM and empty revision output
+directory. It uses physical `instance_id` values and the new XCAF loader rather
+than rediscovering legacy experiment paths, rerunning BREP analysis, or assigning
+a second set of identifiers.
+
+The useful legacy visualization behavior remains: cumulative normal and
+exploded views plus before/after XY, XZ and YZ sections centered on the current
+joining geometry. It adds an optional current-part highlight. The implementation
+uses the StepParser's persistent viewer, batched camera capture, matte material,
+origin axes, whitespace cropping and cached bounds. Boolean section results are
+cached by instance, plane and cut coordinate, and OCC parallel booleans are
+configurable. Stable filenames retain the selectors required by later visual
+nodes; entropy and failures are stored in `rendering_summary.json`.
+
+Focused unit tests and a real two-part OCC smoke run pass. The node has not yet
+replaced the legacy App V3 workflow call; that switch belongs in workflow
+composition after the remaining downstream nodes have explicit artifact inputs.
+
+## Interaction analysis implementation progress (2026-09-21)
+
+The new `interaction_analysis` package defines one configured LLM invocation per
+assembly step. It has local prompts and structured output, uses the shared model,
+prompt, tool and execution runtime, and accepts explicit sequence, BOM, spatial,
+interlocking and rendering artifacts. Its required visual input is the new step
+collage; before-state section images are optional supporting evidence.
+
+Input preparation resolves copies through BOM instance-to-definition links and
+filters geometric distances and interlocking blockers to the actual sequence
+state, preventing future parts from leaking into the current-step assessment.
+Parallel fan-out settings are declared in config but remain workflow-owned.
+The future workflow must write per-step results atomically, update a partial
+aggregate after each completion, and replace it with the final ordered artifact.

@@ -11,8 +11,14 @@ It does not yet replace the working App V3 launchers.
 
 The configuration loader and standalone STEP parser are implemented. Run the
 parser through `scripts/test_stepparser.py`; its settings live under
-`nodes.step_preprocessing` in `configs/appsettingsv3.yaml`. Other workflow nodes
-and their prompt/schema selections remain scaffolds until their resources are
-extracted. App V3 still uses the existing implementation.
+`nodes.step_preprocessing` in `configs/appsettingsv3.yaml`. Workflows call it
+through the thin `run_step_preprocessing` node adapter, which only delegates to
+`StepProcessor` and returns artifact paths. `assembly_analysis` and the
+single-part `monopart_analysis` node use the shared configured-input, prompt,
+model, tool and structured-execution runtime. The deterministic `bom_merge` node
+attaches one analysis to each unique part while preserving placed instances.
+`sequence_generation` supports initial generation and feedback-driven revision
+with deterministic BOM coverage checks. Workflow fan-out and the remaining
+nodes are still pending. App V3 still uses the existing implementation.
 
 See `docs/reorganize.md` for the source inventory, extraction order, and checks.

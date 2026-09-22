@@ -53,8 +53,9 @@ def load_step(path: str | Path) -> LoadedAssembly:
         raise ValueError("STEP contains no free shapes")
     definitions, instances = [], []
     by_definition, counts = {}, Counter()
-    hierarchy = [{"assembly_id": "assy_001", "name": path.stem, "parent_id": None,
-                  "assembly_ids": [], "instance_ids": []}]
+    hierarchy = []
+    # This traversal holder is not an assembly and is never exported.
+    root_holder = {"assembly_id": None, "assembly_ids": [], "instance_ids": []}
 
     def label_id(label):
         entry = TCollection_AsciiString()
@@ -107,10 +108,12 @@ def load_step(path: str | Path) -> LoadedAssembly:
         parent_record["instance_ids"].append(instance_id)
 
     for index in range(1, roots.Length() + 1):
-        walk(roots.Value(index), TopLoc_Location(), hierarchy[0], [], set())
+        walk(roots.Value(index), TopLoc_Location(), root_holder, [], set())
     if not instances:
         raise ValueError("STEP contains no part instances")
-    return LoadedAssembly(path.stem, definitions, instances, hierarchy,
+    name = (hierarchy[0]["name"] if len(root_holder["assembly_ids"]) == 1
+            and not root_holder["instance_ids"] else path.stem)
+    return LoadedAssembly(name, definitions, instances, hierarchy,
                           make_compound(i.shape for i in instances),
                           {"length": "mm", "area": "mm2", "volume": "mm3",
                            "normalization": "STEP reader SetSystemLengthUnit(1.0)"}, document)

@@ -46,18 +46,12 @@ def oriented_box(shape) -> dict:
             "status": "complete", "method": "BRepBndLib.AddOBB"}
 
 
-def _topology_counts(shape):
-    from OCC.Core.TopAbs import TopAbs_SOLID, TopAbs_SHELL, TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX
-    from OCC.Core.TopExp import topexp
-    from OCC.Core.TopTools import TopTools_IndexedMapOfShape
+def _has_solids(shape):
+    from OCC.Core.TopAbs import TopAbs_SOLID
+    from OCC.Core.TopExp import TopExp_Explorer
 
-    result = {}
-    for name, kind in (("solids", TopAbs_SOLID), ("shells", TopAbs_SHELL),
-                       ("faces", TopAbs_FACE), ("edges", TopAbs_EDGE), ("vertices", TopAbs_VERTEX)):
-        mapping = TopTools_IndexedMapOfShape()
-        topexp.MapShapes(shape, kind, mapping)
-        result[name] = mapping.Size()
-    return result
+    # Stop at the first solid; do not enumerate or count topology.
+    return bool(TopExp_Explorer(shape, TopAbs_SOLID).More())
 
 
 def _properties(shape, kind):
@@ -119,17 +113,27 @@ def surface_details(shape) -> list[dict]:
     return faces
 
 
-def measure_shape(shape, *, detailed: bool = True, coordinate_frame: str = "part_local") -> dict:
-    counts = _topology_counts(shape)
+def measure_shape(shape, *, detailed: bool = False, include_oriented_box: bool = False,
+                  include_axis_aligned_box: bool = False,
+                  include_size: bool = True,
+                  coordinate_frame: str = "part_local") -> dict:
     surface = _properties(shape, "surface")
-    volume = _properties(shape, "volume") if counts["solids"] else None
+    volume = _properties(shape, "volume") if _has_solids(shape) else None
     mass = float(volume.Mass()) if volume else None
     result = {"status": "complete", "coordinate_frame": coordinate_frame,
               "volume": mass, "volume_status": "complete" if volume else "not_a_solid",
               "surface_area": float(surface.Mass()),
               "center_of_mass": xyz(volume.CentreOfMass()) if volume and mass else None,
-              "bounding_box": bounding_box(shape), "oriented_bounding_box": oriented_box(shape),
-              "topology": counts}
+              "bounding_box_status": "complete" if include_axis_aligned_box else "disabled",
+              "oriented_bounding_box_status": "complete" if include_oriented_box else "disabled",
+              "surface_details_status": "complete" if detailed else "disabled"}
+    if include_oriented_box:
+        result["oriented_bounding_box"] = oriented_box(shape)
+    bounds = bounding_box(shape) if include_axis_aligned_box or include_size else None
+    if include_axis_aligned_box:
+        result["bounding_box"] = bounds
+    if include_size:
+        result["size"] = dict(zip(("x", "y", "z"), bounds["dimensions"]))
     if detailed:
         details = surface_details(shape)
         result["surface_details"] = details

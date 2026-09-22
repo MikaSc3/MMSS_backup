@@ -1,19 +1,56 @@
 # The new STEP parser uses step_preprocessing below.
 # Existing App V3 still uses configs/appconfig/appconfigV2.yaml.
-# assembly_analysis remains a draft until that node is extracted.
+# Existing App V3 has not yet switched to these workflow nodes.
 workflow: assembly_assessment
+
+llms:
+  default: gpt_5_4
+  profiles:
+    gpt_5_4:
+      provider: azure_openai_v1
+      model: gpt-5.4
+      deployment: gpt-5.4
+      deployment_env: AZURE_DEPLOYMENT_54
+      endpoint_env: AZURE_ENDPOINT_54
+      api_key_env: API_KEY_GPT_5
+      max_completion_tokens: 8000
+      temperature: 0
+      seed: 42
+    gpt_4o:
+      provider: azure_openai
+      model: gpt-4o
+      deployment: gpt-4o
+      endpoint_env: AZURE_ENDPOINT_4O
+      api_key_env: API_KEY_GPT_4
+      api_version: 2024-12-01-preview
+      max_completion_tokens: 8000
+      temperature: 0
+      seed: 42
+    llama_local:
+      provider: openai_compatible
+      model: llama3.2-vision
+      base_url: http://localhost:11434/v1
+      max_completion_tokens: 8000
+      temperature: 0
 
 nodes:
   step_preprocessing:
     color_mode: geometry
+    geometry:
+      include_size: true
+      include_surface_details: false
+      include_oriented_box: false
+      include_axis_aligned_box: false
     rendering:
       enabled: true
-      assembly_views: [iso1, iso4, front, top, right]
-      part_views: [iso1, iso4, front, top, right]
-      exploded_views: [iso1]
-      highlighted_view: null
+      assembly_views: [iso1, iso2, iso3, iso4, front, top, right]
+      part_views: [iso1, iso2, iso3, iso4, front, top, right]
+      exploded_views: [iso1, iso2, iso3, iso4]
+      highlighted_view: iso1
       transparency_values: [0.0]
       resolution: [1920, 1080]
+      crop_whitespace: true
+      crop_padding_px: 16
       explosion_factor: 2.5
       edge_width: 1.0
       # Matte surfaces: 0 disables bright reflected highlights; range 0..1.
@@ -25,12 +62,22 @@ nodes:
       enabled: true
       contact_tolerance_mm: 0.01
       proximity_threshold_mm: 3.0
-      distance_mode: all_pairs
+      distance_mode: nearby_pairs
+      multithread: true
+    interlocking:
+      enabled: true
+      mode: contact_direction_proxy
+      sample_count: 4
+      minimum_travel_mm: 10.0
+      interference_tolerance_mm: 0.000001
+      directional_cosine_threshold: 0.5
     automaticimageselection:
       enabled: true
       include_exploded: false
       analysis_size: 128
       tile_size: [960, 540]
+      crop_whitespace: true
+      crop_padding_px: 12
       assembly_entropy_weight: 0.15
     sam:
       enabled: false
@@ -45,18 +92,320 @@ nodes:
       overlay_alpha: 0.55
   assembly_analysis:
     enabled: true
+    llm:
+      profile: gpt_5_4
+      max_completion_tokens: 4000
     prompts:
       system: system_v1
       human: human_v1
     structured_output: assembly_analysis_v1
-    model:
-      id: "5.4"
+    tools: []
+    execution:
+      max_tool_rounds: 4
     inputs:
       assembly_metadata:
         enabled: true
-        fields: [total_parts, unique_parts, bounding_box]
+        required: true
+        kind: json
+        source: assembly
+        fields: [name, total_parts, unique_parts, units, geometry.size, geometry.center_of_mass, hierarchy]
+      bom:
+        enabled: true
+        required: true
+        kind: json
+        source: bom
+        fields: [parts, instances]
+        max_chars: 25000
+      spatial_relations:
+        enabled: true
+        kind: json
+        source: spatial_relations
+        fields: [contact_map, close_map, statistics]
+        max_chars: 15000
+      interlocking:
+        enabled: true
+        kind: json
+        source: interlocking
+        fields: [method, parts, blocker_edges, interlocked_groups, limitations]
+        max_chars: 15000
       assembly_images:
         enabled: true
-        views: [iso1, iso1_exploded]
-        limit: 2
+        required: true
+        kind: images
+        source: images
+        path: assembly
+        patterns: [collage_assembly.png]
+        limit: 1
         downscale_factor: 0.7
+      user_context:
+        enabled: true
+        kind: text
+        source: user_context
+        max_chars: 12000
+  monopart_analysis:
+    enabled: true
+    llm:
+      profile: gpt_5_4
+      max_completion_tokens: 5000
+    prompts:
+      system: system_v1
+      human: human_v1
+    structured_output: monopart_analysis_v1
+    tools: []
+    execution:
+      max_tool_rounds: 4
+    inputs:
+      part_metadata:
+        enabled: true
+        required: true
+        kind: json
+        source: bom
+        select:
+          path: parts
+          field: part_id
+          equals: "{part_id}"
+          mode: one
+        fields: [part_id, name, quantity, color, geometry.volume, geometry.surface_area, geometry.center_of_mass, geometry.size]
+      part_instances:
+        enabled: true
+        kind: json
+        source: bom
+        select:
+          path: instances
+          field: part_id
+          equals: "{part_id}"
+          mode: all
+        fields: [instance_id, assembly_id, center_of_mass]
+      assembly_analysis:
+        enabled: true
+        kind: json
+        source: assembly_overview
+        fields: [analysis.assembly_name_guess, analysis.primary_function, analysis.assembly_description, analysis.partslist]
+        max_chars: 12000
+      part_images:
+        enabled: true
+        required: true
+        kind: images
+        source: images
+        path: "parts/{part_id}"
+        patterns: ["collage_{part_id}.png"]
+        limit: 1
+        downscale_factor: 0.7
+      assembly_reference_image:
+        enabled: false
+        kind: images
+        source: images
+        path: assembly
+        patterns: [collage_assembly.png]
+        limit: 1
+        downscale_factor: 0.7
+      user_context:
+        enabled: true
+        kind: text
+        source: user_context
+        max_chars: 12000
+  bom_merge:
+    enabled: true
+    require_all_parts: true
+  sequence_generation:
+    enabled: true
+    llm:
+      profile: gpt_5_4
+      max_completion_tokens: 8000
+    prompts:
+      generate:
+        system: system_v1
+        human: generate_v1
+      revise:
+        system: system_v1
+        human: revise_v1
+    structured_output: assembly_sequence_v1
+    tools: []
+    execution:
+      max_tool_rounds: 4
+    inputs:
+      common:
+        assembly_metadata:
+          enabled: true
+          required: true
+          kind: json
+          source: assembly
+          fields: [name, total_parts, unique_parts, geometry.size, hierarchy]
+        assembly_overview:
+          enabled: true
+          required: true
+          kind: json
+          source: assembly_overview
+          fields: [analysis]
+          max_chars: 15000
+        enriched_bom:
+          enabled: true
+          required: true
+          kind: json
+          source: bom_enriched
+          fields: [parts, instances]
+          max_chars: 40000
+        spatial_relations:
+          enabled: true
+          kind: json
+          source: spatial_relations
+          fields: [contact_map, close_map, statistics]
+          max_chars: 15000
+        interlocking:
+          enabled: true
+          kind: json
+          source: interlocking
+          fields: [method, parts, blocker_edges, interlocked_groups, limitations]
+          max_chars: 15000
+        assembly_images:
+          enabled: true
+          required: true
+          kind: images
+          source: images
+          path: assembly
+          patterns: [collage_assembly.png]
+          limit: 1
+          downscale_factor: 0.7
+        user_context:
+          enabled: true
+          kind: text
+          source: user_context
+          max_chars: 12000
+        sequence_constraints:
+          enabled: true
+          kind: text
+          source: sequence_constraints
+          max_chars: 12000
+      generate: {}
+      revise:
+        initially_generated_sequence:
+          enabled: true
+          required: true
+          kind: json
+          source: initial_sequence
+          fields: [sequence]
+          max_chars: 30000
+        summarized_user_feedback:
+          enabled: true
+          required: true
+          kind: text
+          source: user_feedback_summary
+          max_chars: 12000
+  sequence_rendering:
+    enabled: true
+    # Normal step views are rendered for each configured transparency.
+    views: [iso1, iso2]
+    transparency_values: [0.0]
+    # Exploded, highlighted and section views remain opaque.
+    exploded_views: [iso1, iso2]
+    explosion_factor: 2.5
+    section_planes: [xy, xz, yz]
+    render_before_sections: true
+    boolean_parallel: true
+    highlight_joining_parts: true
+    highlight_view: iso1
+    highlight_color: [255, 0, 255]
+    context_color: [150, 150, 150]
+    context_transparency: 0.8
+    color_mode: geometry
+    resolution: [1920, 1080]
+    crop_whitespace: true
+    crop_padding_px: 16
+    edge_width: 1.0
+    material_specular: 0.0
+    material_shininess: 0.1
+    show_origin_axes: true
+    origin_axes_size_ratio: 0.2
+    collage:
+      enabled: true
+      additional_views: 2
+      include_highlight: true
+      include_exploded: true
+      analysis_size: 128
+      tile_size: [960, 540]
+      entropy_weight: 0.15
+      crop_whitespace: true
+      crop_padding_px: 12
+  interaction_analysis:
+    enabled: true
+    llm:
+      profile: gpt_5_4
+      max_completion_tokens: 5000
+    prompts:
+      system: system_v1
+      human: human_v1
+    structured_output: interaction_analysis_v1
+    tools: []
+    execution:
+      max_tool_rounds: 4
+    # Read by the future workflow; one node invocation still analyzes one step.
+    fanout:
+      parallel: true
+      max_workers: 6
+    inputs:
+      assembly_step:
+        enabled: true
+        required: true
+        kind: json
+        source: assembly_step
+        fields: [step_id, step_description, belongs_to, base_part, joining_part, joining_process]
+      base_part:
+        enabled: true
+        required: true
+        kind: json
+        source: base_part
+        max_chars: 16000
+      joining_parts:
+        enabled: true
+        required: true
+        kind: json
+        source: joining_parts
+        max_chars: 30000
+      spatial_context:
+        enabled: true
+        kind: json
+        source: step_spatial_relations
+        fields: [unit, assembled_before, joining_instances, relevant_pairs]
+        max_chars: 20000
+      interlocking_context:
+        enabled: true
+        kind: json
+        source: step_interlocking
+        fields: [method, joining_parts, relevant_blocker_edges, limitations]
+        max_chars: 16000
+      assembly_overview:
+        enabled: true
+        kind: json
+        source: assembly_overview
+        fields: [analysis.assembly_name_guess, analysis.primary_function, analysis.assembly_description]
+        max_chars: 10000
+      current_step_collage:
+        enabled: true
+        required: true
+        kind: images
+        source: sequence_renderings
+        path: "."
+        patterns: ["collage_step_{step_id:02d}.png"]
+        limit: 1
+        downscale_factor: 0.7
+      before_section_images:
+        enabled: true
+        kind: images
+        source: sequence_renderings
+        path: "."
+        patterns: ["step_{step_id:02d}_section_*_before_transp_0_0.png"]
+        limit: 3
+        downscale_factor: 0.7
+      joining_part_image:
+        enabled: false
+        kind: images
+        source: images
+        path: "parts/{joining_part_id}"
+        patterns: ["collage_{joining_part_id}.png"]
+        limit: 1
+        downscale_factor: 0.7
+      user_context:
+        enabled: true
+        kind: text
+        source: user_context
+        max_chars: 12000
