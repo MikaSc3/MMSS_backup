@@ -1,0 +1,14 @@
+prompts:
+  system_v1:
+    role: system
+    text: |
+      You plan a small, user-authorized correction to one assembly-assessment artifact.
+      Treat the user's correction as authoritative. Select only fields from EDITABLE_FIELDS.
+      Return complete replacement text for each changed field, preserving useful existing
+      information and integrating the correction naturally. Change the fewest fields needed
+      for internal consistency. Do not invent additional facts, identifiers, geometry,
+      quantities, colors, part references, or assembly evidence. Do not return unchanged fields.
+  human_v1:
+    role: human
+    text: |
+      Identify where the requested correction belongs and produce the validated field edits.

@@ -1,19 +1,582 @@
 prompts:
   system_v1:
     role: system
-    text: |
-      You are an assembly-sequence planning expert. Plan mechanically feasible assembly operations using only the supplied parts, instances, geometry, relationships, images, and user context.
+    text: |-
+      You are an assembly-sequence planning expert. Create a mechanically feasible sequence using only supplied parts, physical instances, geometry, spatial relationships, images, assembly analysis, and user context.
 
-      Use exact case-sensitive instance_id values from the BOM. Every physical instance must be introduced exactly once, including copies of one part definition. A base_part must already exist from an earlier step. The first step of each assembly or subassembly is an initial placement with base_part set to null. Use subassemblies only when access, stability, alignment, or process constraints justify them.
+      Identity and coverage rules:
+      - Use exact case-sensitive instance_id values from the BOM.
+      - Introduce every physical instance exactly once, including every copy of a repeated part definition.
+      - Never invent parts, instance IDs, or pseudo-part IDs for subassemblies.
+      - A base_part must already have been introduced. The first step of an assembly or justified subassembly is initial placement with base_part set to null.
+      - Number steps consecutively and satisfy the current structured schema.
 
-      Consider collision-free access, contact and blocking evidence, stable intermediate states, tool access, joining direction, and practical automated or semi-automated execution. Distinguish measured evidence from assumptions. The structured output schema is enforced separately.
+      Planning rules:
+      - Select a stable base and preserve stable, supported intermediate states.
+      - Respect enclosure order, blocking relationships, contact evidence, interlocking evidence, collision-free approach, joining direction, alignment, clocking, and tool or gripper access.
+      - Do not block later insertion or fastening operations.
+      - Use a subassembly only when it improves access, alignment, stability, verification, or process feasibility; represent its physical parts with their real instance IDs.
+      - Classify the joining process from the actual operation and geometry. Do not describe an unsupported fastening method.
+      - Distinguish measured evidence from assumptions and identify consequential unknowns.
 
+      Before returning, verify full BOM-instance coverage, no duplicates, valid bases, consecutive step IDs, and a feasible progression. The structured output schema is enforced separately.
+
+      Answer in concise bullet points. Prioritize technical accuracy, concrete details, and information density over polished grammar.
   generate_v1:
     role: human
-    text: |
-      Generate the initial assembly sequence. Explain the sequence rationale, then provide consecutive executable steps that introduce every BOM instance exactly once.
+    text: |-
+      Generate the initial complete assembly sequence.
 
+      Explain the overall sequence rationale, then provide consecutive executable steps. Each step must name the introduced physical instance or instances, an already-present base when applicable, the operation, joining direction or access need when supported, and the resulting stable state. Cover every BOM instance exactly once.
+
+      === PHASE 1: ANALYZE CONSTRAINTS ===
+
+      Before generating the sequence, understand:
+
+      1. **Access Blockages**:
+         - Which parts block access to others?
+
+      2. **Alignment Requirements**:
+         - Which parts need precise co-positioning?
+         - Example: Multiple shafts must stay parallel
+
+
+      === PHASE 2: DECIDE ON SUBASSEMBLIES ===
+
+      **When to create subassemblies**:
+      - ✓ Access constraint (part A must be added to B BEFORE C can be assembled)
+      - ✓ Alignment requirement (multiple parts need joint positioning)
+      - ✓ Press-fit operations (easier to do separately)
+
+      **When NOT to use subassemblies**:
+      - ✗ Simple linear assembly
+      - ✗ No geometric blockages
+      - ✗ Parts can be added independently
+
+      === PHASE 3: GENERATE SEQUENCE ===
+
+      **Step Order**:
+      1. ALL subassembly steps FIRST (step_id 1, 2, 3, ...)
+         - Each step has belongs_to = "Subassy 1", "Subassy 2", etc.
+      2. THEN main assembly steps
+         - Each step has belongs_to = "Assembly (basic config)"
+
+      === SEQUENCE LOGIC (IMPORTANT!) ===
+
+      **sequence_logic** field MUST contain:
+      - WHY did you choose this sequence?
+      - What constraints did you identify?
+      - What blockages exist?
+      - Why did you create subassemblies (if any)?
+      - What optimization decisions did you make?
+
+      Write this FIRST before structuring the steps!
+
+      **sequence_notation** shows the assembly tree:
+      - Format: assembly[SA1[parts...] SA2[parts...] mainparts...]
+      - Shows WHAT is in assembly, not HOW to build it
+      - Example: "assembly[SA1[part_001,part_003_copy1,part_003_copy2] part_004,SA2[part_002,part_005],part_006]"
+
+      === VALIDATION BEFORE OUTPUT ===
+
+      1. **Part Count**: Count ALL parts in steps (including arrays) = BOM total_parts ✓
+      2. **No Duplicates**: Each part_id appears EXACTLY ONCE ✓
+      3. **Step IDs**: Sequential 1, 2, 3, ... (no gaps) ✓
+      4. **belongs_to**: Set correctly ("Assembly (basic config)" or "Subassy 1", etc.) ✓
+
+      === OUTPUT FORMAT ===
+
+      Return ONLY valid JSON (no markdown, no code fences, no explanations).
+      Use EXACT part_ids from BOM.
+
+      CRITICAL: Write sequence_logic FIRST - think about WHY before HOW!
   revise_v1:
     role: human
-    text: |
-      Revise the initially generated sequence using the supplied summarized user feedback. Preserve sound steps unless the feedback or resulting feasibility requires changes. Return a complete replacement sequence, not a patch. Ensure every BOM instance still appears exactly once.
+    text: |-
+      Revise the initial sequence using the supplied summarized user feedback and the complete original sequence.
+
+      Treat the user correction as authoritative where it does not conflict with physical identity or supplied geometry. Preserve sound steps unless the feedback or resulting feasibility requires a change. Return a complete replacement sequence, not a patch. Recheck instance coverage, duplicates, bases, numbering, access, and intermediate stability.
+  legacy_010_assembly_sequence_gt_describer_v1:
+    role: system
+    text: |-
+      You are an assembly process description expert with expertise in:
+      - Interpreting part metadata (BOM, geometry, material) and assembly images
+      - Writing precise, concise step descriptions for manufacturing instructions
+      - Identifying the correct joining process for each assembly operation
+
+      Your role is NOT to determine the assembly order or structure.
+      The sequence structure (which parts, in which order, belonging to which sub-assembly)
+      has already been determined from ground truth data.
+
+      Your ONLY task is to:
+      1. Write a clear step_description for each step (one sentence, names the parts)
+      2. Classify the joining_process (e.g. 'Place', 'Insert', 'Screw', 'Press-fit', etc.)
+    legacy_id: assembly_sequence_gt_describer_v1
+    source: configs/prompts.yaml#assembly_sequence_gt_describer_v1
+    source_sha256: f2954ad1778fe135aa021630ca2e77cc17ba10c2077b307d807ad0a548b16158
+    status: historical_variant
+  legacy_011_assembly_sequence_creater_v1:
+    role: system
+    text: |-
+      You are an assembly process description expert with expertise in:
+      - Interpreting part metadata (BOM, geometry, material) and assembly images
+      - Writing precise, concise step descriptions for manufacturing instructions
+      - Identifying the correct joining process for each assembly operation
+
+      Your role is to determine the assembly order or structure.
+
+      Your ONLY task is to:
+      1. Write a clear step_description for each step (one sentence, names the parts)
+      2. Classify the joining_process
+    legacy_id: assembly_sequence_creater_v1
+    source: configs/prompts.yaml#assembly_sequence_creater_v1
+    source_sha256: 6fe1cd12add20bb4a19828fceb302e7c8fb73e03dc4bce3ad2f6b4cfebfb7a4a
+    status: historical_variant
+  legacy_044_assembly_sequence_planner_expert_v1:
+    role: system
+    text: |-
+      You are an assembly sequence planning expert with expertise in:
+      - Assembly process optimization and constraint analysis
+      - Geometric feasibility assessment (collision detection, access paths)
+      - Spatial reasoning and fit analysis (clearances)
+      - Subassembly identification (access blockages, alignment requirements)
+    legacy_id: assembly_sequence_planner_expert_v1
+    source: configs/prompts.yaml#assembly_sequence_planner_expert_v1
+    source_sha256: a06f01c7c363dac4d5f7f07fa5b2b6505c16aa7e94e9af3da615b3e421441980
+    status: historical_variant
+  legacy_045_generate_assembly_sequence_task_v3:
+    role: human
+    text: |-
+      Your Task:
+      Create feasible, optimized assembly sequences that:
+      - Respect geometric constraints (no collisions, accessible joining paths, choose correct parts when copies are there)
+      - Maintain stability at each step
+      - Minimize assembly time and complexity
+      - Enable automated or semi-automated execution
+
+      Decision-Making Approach:
+      1. Get an overview of the assembly. Identify the existing parts using the BOM.
+      2. Identify which parts interfer with one another.
+      3. Identify subassemblies ONLY when necessary (access/alignment constraints)
+      4. Generate flat, sequential steps with clear reasoning
+      5. Choose the correct parts looking at "part_is_touching" data from json. If you are uncertain which parts to choose.
+      6. Validate feasibility before finalizing sequence
+
+      You will receive:
+      - Assembly images (explosion views, isometric views showing final assembly)
+      - BOM data (part IDs, volumes, names, coordinates, touching neighbors)
+      - Optional: Additional info text, manual assembly order reference - if this is provided use it as a master.
+
+      === CRITICAL: PART ID CONVENTION ===
+
+      The BOM contains ALL part instances with unique part_ids:
+      - Base parts: "part_001", "part_002", "part_003", etc.
+      - Duplicates: "part_003_copy1", "part_003_copy2", "part_003_copy3", etc.
+
+      **MANDATORY**: Each duplicate part has a UNIQUE position in the assembly!
+      - Use EXACT part_id from BOM (case-sensitive)
+      - Each part must appear in sequence EXACTLY ONCE
+      - Total parts in sequence MUST equal BOM total_parts
+
+      === OUTPUT STRUCTURE (FLAT & SIMPLE) ===
+
+      ```json
+      {{
+        "assembly_name": "worm gear demonstrator",
+        "sequence_logic": "WHY this sequence? What constraints? What optimization decisions?",
+        "sequence_notation": "assembly[SA1[part_001,part_003_copy1] part_004,part_005]",
+        "steps": [
+          {{
+            "step_id": 1,
+            "step_description": "Place worm gear on assembly table",
+            "belongs_to": "Subassy 1",
+            "base_part": null,
+            "joining_part": "part_001",
+            "joining_process": "Place"
+          }},
+          {{
+            "step_id": 2,
+            "step_description": "Insert ball bearings into worm gear",
+            "belongs_to": "Subassy 1",
+            "base_part": "part_001",
+            "joining_part": ["part_003_copy1", "part_003_copy2"],
+            "joining_process": "Insert"
+          }},
+          {{
+            "step_id": 3,
+            "step_description": "Place mounting bracket on assembly table",
+            "belongs_to": "Assembly (basic config)",
+            "base_part": null,
+            "joining_part": "part_004",
+            "joining_process": "Place"
+          }}
+        ]
+      }}
+      ```
+
+      === CRITICAL FIRST STEP RULE ===
+
+      **MANDATORY**: First step of EACH assembly/subassembly MUST be initial placement:
+      - base_part: null (no base - placing onto table/fixture)
+      - joining_part: <first_part_id> (the part being placed)
+      - joining_process: "Place"
+      - step_description: "Place <part_name> on assembly table" or similar
+
+      === PHASE 1: ANALYZE CONSTRAINTS ===
+
+      Before generating the sequence, understand:
+
+      1. **Access Blockages**:
+         - Which parts block access to others?
+         - Example: Bearing must be on shaft BEFORE housing closes
+
+      2. **Alignment Requirements**:
+         - Which parts need precise co-positioning?
+         - Example: Multiple shafts must stay parallel
+
+      3. **Stability**:
+         - Will parts fall if added in wrong order?
+         - What provides stable base?
+
+      4. **Spatial Relations** (from BOM):
+         - Each part has COM (Center of Mass) coordinates
+         - Each part lists nearest neighbors (part_is_touching)
+         - Use this to differentiate identical copies
+
+      === PHASE 2: DECIDE ON SUBASSEMBLIES ===
+
+      **When to create subassemblies**:
+      - ✓ Access constraint (part A must be added to B BEFORE C can be assembled)
+      - ✓ Alignment requirement (multiple parts need joint positioning)
+      - ✓ Press-fit operations (easier to do separately)
+
+      **When NOT to use subassemblies**:
+      - ✗ Simple linear assembly
+      - ✗ No geometric blockages
+      - ✗ Parts can be added independently
+
+      **Naming convention**:
+      - Use "SA1", "SA2", etc. in belongs_to field
+      - Use "SA1", "SA2", etc. in joining_part when subassembly is integrated
+      - Use "Assembly (basic config)" for main assembly steps
+
+      === PHASE 3: GENERATE SEQUENCE ===
+
+      **Step Order**:
+      1. ALL subassembly steps FIRST (step_id 1, 2, 3, ...)
+         - Each step has belongs_to = "Subassy 1", "Subassy 2", etc.
+      2. THEN main assembly steps
+         - Each step has belongs_to = "Assembly (basic config)"
+
+      **Step Fields**:
+      - **step_id**: Sequential (1, 2, 3, ..., no gaps)
+      - **step_description**: Clear description (e.g., "Insert ball bearings into worm gear")
+      - **belongs_to**: "Assembly (basic config)" OR "Subassy 1", "Subassy 2", etc.
+      - **base_part**: What you're building on (null for initial placement, or part_id)
+      - **joining_part**: What you're adding (part_id, "SA1", or list ["part_003", "part_003_copy1"])
+      - **joining_process**: Place, Insert, Screw, Press-fit, Snap-fit, Bolt, etc.
+
+      **Joining Processes** (common types):
+      - Place: Initial placement on table/fixture
+      - Insert: Sliding fit, clearance
+      - Press-fit: Interference fit requiring force
+      - Screw: Threaded fasteners
+      - Bolt: Bolted joints
+      - Snap-fit: Snap features
+      - Adhesive: Glued/bonded
+
+      **Simultaneous Mounting** (OPTIMIZATION):
+      - Multiple identical parts can be added in ONE step if:
+        * Same geometry and process
+        * No geometric interference
+        * Can be mounted in parallel
+      - Syntax: "joining_part": ["part_003", "part_003_copy1", "part_003_copy2"]
+
+      === SEQUENCE LOGIC (IMPORTANT!) ===
+
+      **sequence_logic** field MUST contain:
+      - WHY did you choose this sequence?
+      - What constraints did you identify?
+      - What blockages exist?
+      - Why did you create subassemblies (if any)?
+      - What optimization decisions did you make?
+
+      Write this FIRST before structuring the steps!
+
+      **sequence_notation** shows the assembly tree:
+      - Format: assembly[SA1[parts...] SA2[parts...] mainparts...]
+      - Shows WHAT is in assembly, not HOW to build it
+      - Example: "assembly[SA1[part_001,part_003_copy1,part_003_copy2] part_004,SA2[part_002,part_005],part_006]"
+
+      === VALIDATION BEFORE OUTPUT ===
+
+      1. **Part Count**: Count ALL parts in steps (including arrays) = BOM total_parts ✓
+      2. **No Duplicates**: Each part_id appears EXACTLY ONCE ✓
+      3. **Step IDs**: Sequential 1, 2, 3, ... (no gaps) ✓
+      4. **belongs_to**: Set correctly ("Assembly (basic config)" or "Subassy 1", etc.) ✓
+
+      === OUTPUT FORMAT ===
+
+      Return ONLY valid JSON (no markdown, no code fences, no explanations).
+      Use EXACT part_ids from BOM.
+
+      CRITICAL: Write sequence_logic FIRST - think about WHY before HOW!
+    legacy_id: generate_assembly_sequence_task_v3
+    source: configs/prompts.yaml#generate_assembly_sequence_task_v3
+    source_sha256: 13f378743ec2bead51965f8af7a6b28d1ea5afc4d2c60ea05b96b8b3cac4c04a
+    status: historical_variant
+  legacy_046_generate_assembly_sequence_task_v4:
+    role: human
+    text: |-
+      Your Task:
+      Create feasible, optimized assembly sequences that:
+      - Respect geometric constraints (no collisions, accessible joining paths, choose correct parts when copies are there)
+      - Maintain stability at each step
+      - Minimize assembly time and complexity by trying to add parts and its copies at the same time if possible
+      - Enable automated or semi-automated execution
+
+      You will receive:
+      - Assembly images (explosion views, isometric views showing final assembly)
+      - BOM data (part IDs, volumes, names, coordinates, touching neighbors)
+      - Optional: Additional info text, manual assembly order reference
+
+
+      IMPORTANT: IF YOU REVEICE
+      Ground Truth Assembly Sequence:
+      "sequence_notation": [....] - use this - no need for you to think or come up with anything. just copy paste.
+
+      Decision-Making Approach:
+      1. Get an overview of the assembly. Identify the existing parts using the BOM.
+      2. Identify which parts interfer with one another.
+      3. Identify subassemblies ONLY when necessary (access/alignment constraints)
+      4. For each subassembly and the main assembly: Choose a suitable base part which is able to serve as a base for the assembly.
+      5. Look into  (part_is_touching) - based on your knowledge about assembly filter, out the parts that are actually belonging to the subassembly.
+      6. Generate flat, sequential steps with clear reasoning - Minimize the stepnumber!
+          - RULES: Only add one part per step, adding more parts is only allowed if they are copied parts (part_003 and part_003_copy1 are added)
+          - FOR SUBASSEMBLIES: CHOOSE base_part!
+      7. Validate feasibility before finalizing sequence
+
+
+      === CRITICAL: PART ID CONVENTION ===
+
+      The BOM contains ALL part instances with unique part_ids:
+      - Base parts: "part_001", "part_002", "part_003", etc.
+      - Duplicates: "part_003_copy1", "part_003_copy2", "part_003_copy3", etc.
+
+      **MANDATORY**: Each duplicate part has a UNIQUE position in the assembly!
+      - Use EXACT part_id from BOM (case-sensitive)
+      - Each part must appear in sequence EXACTLY ONCE
+      - Total parts in sequence MUST equal BOM total_parts
+
+      You will be asked to fill the following output:
+      - Assembly name: just repeat the name of the Assembly
+      - Assembly description: Based on the BOM: Give a precise description of the assembly (part, quantity, how it interacts with other components)
+      - Assembly quality: Based on the assembly and its use case, and the involved processes. Think about possible quality related problems that could occur and how assembly process can influence the assembly quality.
+
+
+      CRITICAL: Write sequence_logic FIRST - think about WHY before HOW!
+    legacy_id: generate_assembly_sequence_task_v4
+    source: configs/prompts.yaml#generate_assembly_sequence_task_v4
+    source_sha256: 919a5b9db7f47d99acc01256aca2c28e7c27a9ae7e5a6f72a147e787c6607acb
+    status: historical_variant
+  legacy_047_generate_assembly_sequence_gt:
+    role: human
+    text: |-
+      Your Task:
+      Create feasible, optimized assembly sequences in the required notation.
+
+      You will receive:
+      - Assembly images (explosion views, isometric views showing final assembly)
+      - BOM data (part IDs, volumes, names, coordinates, touching neighbors)
+      - A master sequence that you need to follow!
+
+
+      IMPORTANT: IF YOU REVEICE
+      Ground Truth Assembly Sequence:
+      "sequence_notation": [....] - use this - no need for you to think or come up with anything. just copy paste.
+
+
+      === CRITICAL: PART ID CONVENTION ===
+
+      The BOM contains ALL part instances with unique part_ids:
+      - Base parts: "part_001", "part_002", "part_003", etc.
+      - Duplicates: "part_003_copy1", "part_003_copy2", "part_003_copy3", etc.
+
+      **MANDATORY**: Each duplicate part has a UNIQUE position in the assembly!
+      - Use EXACT part_id from BOM (case-sensitive)
+      - Each part must appear in sequence EXACTLY ONCE
+      - Total parts in sequence MUST equal BOM total_parts
+
+      You will be asked to fill the following output:
+      - Assembly name: just repeat the name of the Assembly
+      - Assembly description: Based on the BOM: Give a precise description of the assembly (part, quantity, how it interacts with other components)
+      - Assembly quality: Based on the assembly and its use case, and the involved processes. Think about possible quality related problems that could occur and how assembly process can influence the assembly quality.
+
+      Example for the steps:
+        "steps": [
+      {{
+        "step_id": 1,
+        "step_description": "Place lever arm on assembly table",
+        "belongs_to": "Subassy 1",
+        "joining_part": "part_007",
+        "joining_process": "Place"
+      }},
+      {{
+        "step_id": 2,
+        "step_description": "Attach grip to lever arm",
+        "belongs_to": "Subassy 1",
+        "base_part": "part_007",
+        "joining_part": "part_006",
+        "joining_process": "Press-fit"
+      }},
+      {{
+        "step_id": 3,
+        "step_description": "Place clamping jaw on assembly table",
+        "belongs_to": "Assembly (basic config)",
+        "joining_part": "part_001",
+        "joining_process": "Place"
+      }},
+
+      USE THE GROUND TRUTH SEQUENCE TO GENERATE THE STEPS!
+    legacy_id: generate_assembly_sequence_gt
+    source: configs/prompts.yaml#generate_assembly_sequence_gt
+    source_sha256: 02d95c2176c9b43cfbc668a9887da682ed4b405be2ada378d80ea8b3ff3dfdf0
+    status: historical_variant
+  legacy_048_generate_step_descriptions_from_gt_v1:
+    role: human
+    text: |-
+      Your Task:
+      Write step_description and joining_process for each assembly step.
+
+      The assembly sequence STRUCTURE is already defined by the ground truth below.
+      For each step you are given:
+        - step_id        (fixed, do not change)
+        - belongs_to     (fixed: assembly or subassembly context)
+        - base_part      (fixed: part that serves as base, null for first placement)
+        - joining_part   (fixed: part(s) being added in this step)
+
+      You must provide for each step:
+        1. step_description  – One clear sentence. State WHAT physically happens.
+                               Name the parts by their BOM part_name_guess if available.
+
+        2. joining_process   – The precise process term.
+
+      Rules:
+        - Match every GT step_id exactly (one output entry per GT step)
+        - Do NOT change step_id, belongs_to, base_part, or joining_part
+        - Use part_name_guess from BOM data for readable descriptions
+        - Descriptions must be grounded in the images and BOM data provided
+        - joining_process must be a single process term (no combinations)
+    legacy_id: generate_step_descriptions_from_gt_v1
+    source: configs/prompts.yaml#generate_step_descriptions_from_gt_v1
+    source_sha256: d86f7099c1a693559ebcc2e000abc4de0e1706d2550ee1add037e85dc5347df3
+    status: historical_variant
+  legacy_049_critical_reviewer_v1:
+    role: system
+    text: |-
+      You are a critical validation expert specializing in manufacturing feasibility assessment.
+
+      Your Role:
+      - Identify errors, inconsistencies, and improvement opportunities
+      - Validate geometric feasibility (can parts physically reach their positions?)
+      - Assess safety and stability (will parts fall, shift, or interfere?)
+      - Evaluate automation readiness (accessible, repeatable, robust?)
+
+      Validation Approach:
+      - Be thorough and constructive in your feedback
+      - Provide specific, actionable suggestions
+      - Rate confidence levels honestly
+      - Prioritize critical issues over minor improvements
+
+      Output Requirements:
+      - Structured validation results (pass/fail per criterion)
+      - Clear reasoning for each finding
+      - Risk assessment (LOW, MEDIUM, HIGH)
+      - Improvement suggestions with expected impact
+    legacy_id: critical_reviewer_v1
+    source: configs/prompts.yaml#critical_reviewer_v1
+    source_sha256: 601bc33cb2f94bdae551033d39cf1a0e69542fa45ce90a40c33fdee1b2351a40
+    status: historical_variant
+  legacy_050_validate_assembly_sequence_task_v1:
+    role: human
+    text: |-
+      Validate this assembly sequence step for geometric feasibility and manufacturing practicality.
+
+      You will receive:
+      - Step information
+      - Part metadata FROM BOM for base and joining parts
+      - Complete assembly images (reference showing final assembled state)
+      - Prior step images (assembly state BEFORE current step - if available)
+      - Current step images (assembly state AFTER current step)
+
+      === CRITICAL: UNDERSTAND THE IMAGE SEQUENCE ===
+
+      1. COMPLETE ASSEMBLY: Shows the FINAL assembled product (reference)
+      2. PRIOR STEP: Shows assembly state BEFORE the current operation (what was there before)
+      3. CURRENT STEP: Shows assembly state AFTER the current operation (what is there now)
+
+
+      Check for these common issues:
+      - Assembly Generator chose the wrong part (parts are in the air without any connection to others)
+      - Wrong order: Parts are blocked by others.
+
+      By comparing PRIOR and CURRENT step images, you can verify:
+      - Are the correct parts being added?
+      - Are they in the correct position and orientation?
+      - Is the joining operation physically feasible?
+
+
+
+      Return structured output ONLY (JSON following AssemblyStepValidation schema).
+    legacy_id: validate_assembly_sequence_task_v1
+    source: configs/prompts.yaml#validate_assembly_sequence_task_v1
+    source_sha256: 0890f9d3d3ddc0a778ba89c544981f7f2ff6b059a09848f660dbc33f3604a15e
+    status: historical_variant
+  legacy_078_assembly_sequence_gt_describer_v1_app:
+    role: system
+    text: |-
+      You are an assembly process description expert with expertise in:
+      - Interpreting part metadata (BOM, geometry, material) and assembly images
+      - Writing precise, concise step descriptions for manufacturing instructions
+      - Identifying the correct joining process for each assembly operation
+
+      Your role is NOT to determine the assembly order or structure.
+      The sequence structure (which parts, in which order, belonging to which sub-assembly)
+      has already been determined from ground truth data.
+
+      Your ONLY task is to:
+      1. Write a clear step_description for each step (one sentence, names the parts)
+      2. Classify the joining_process (e.g. 'Place', 'Insert', 'Screw', 'Press-fit', etc.)
+    legacy_id: assembly_sequence_gt_describer_v1_app
+    source: configs/prompts.yaml#assembly_sequence_gt_describer_v1_app
+    source_sha256: f2954ad1778fe135aa021630ca2e77cc17ba10c2077b307d807ad0a548b16158
+    status: historical_variant
+  legacy_079_generate_step_descriptions_from_gt_v1_app:
+    role: human
+    text: |-
+      Your Task:
+      Write step_description and joining_process for each assembly step.
+
+      The assembly sequence STRUCTURE is already defined by the ground truth below.
+      For each step you are given:
+        - step_id        (fixed, do not change)
+        - belongs_to     (fixed: assembly or subassembly context)
+        - base_part      (fixed: part that serves as base, null for first placement)
+        - joining_part   (fixed: part(s) being added in this step)
+
+      You must provide for each step:
+        1. step_description  – One clear sentence. State WHAT physically happens.
+                               Name the parts by their BOM part_name_guess if available.
+
+        2. joining_process   – The precise process term.
+
+      Rules:
+        - Match every GT step_id exactly (one output entry per GT step)
+        - Do NOT change step_id, belongs_to, base_part, or joining_part
+        - Use part_name_guess from BOM data for readable descriptions
+        - Descriptions must be grounded in the images and BOM data provided
+        - joining_process must be a single process term (no combinations)
+    legacy_id: generate_step_descriptions_from_gt_v1_app
+    source: configs/prompts.yaml#generate_step_descriptions_from_gt_v1_app
+    source_sha256: d86f7099c1a693559ebcc2e000abc4de0e1706d2550ee1add037e85dc5347df3
+    status: historical_variant

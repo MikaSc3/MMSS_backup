@@ -22,9 +22,8 @@ def _mapping(value: Any, label: str) -> dict[str, Any]:
 
 
 def _sequence(value: Any) -> dict[str, Any]:
-    document = _mapping(value, "assembly sequence")
-    sequence = document.get("sequence", document)
-    if not isinstance(sequence, dict) or not isinstance(sequence.get("steps"), list):
+    sequence = _mapping(value, "assembly sequence")
+    if not isinstance(sequence.get("steps"), list):
         raise ValueError("Assembly sequence requires a steps list")
     return sequence
 

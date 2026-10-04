@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from assembly_automation.workflows.runtime.node import run_llm_node
+from assembly_automation.workflows.runtime.node import run_llm_node, write_run_record
 
 from .inputs import build_interaction_prompt, effective_settings, prepare_step_inputs
 from .structured_output import get_schema
@@ -41,12 +41,16 @@ def run_interaction_analysis(
         node_id="interaction_analysis", artifacts=prepared, settings=configured,
         llm_profiles=llm_profiles, build_payload=build_interaction_prompt,
         get_schema=get_schema, context=invocation_context, output_path=None,
-        llm=llm, tool_registry=tool_registry, result_key="interaction_analysis")
+        llm=llm, tool_registry=tool_registry)
     if response["status"] != "complete":
         return response
-    result = {"step": prepared["assembly_step"], **response["result"]}
+    result = {"step": prepared["assembly_step"], "interaction_analysis": response["result"]}
     artifact = Path(output_path).resolve() if output_path is not None else None
+    run_record_path = None
     if artifact is not None:
         _write_json(artifact, result)
+        run_record_path = write_run_record(
+            artifact, "interaction_analysis", response["run_record"])
     return {"status": "complete", "artifact": str(artifact) if artifact else None,
-            "result": result}
+            "result": result, "run_record": response["run_record"],
+            "run_record_path": run_record_path}

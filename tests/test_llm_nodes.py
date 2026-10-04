@@ -98,7 +98,7 @@ class AssemblyAnalysisNodeTests(unittest.TestCase):
                 path.write_text(json.dumps(value), encoding="utf-8")
                 artifacts[name] = path
             output = root / "assembly_analysis" / "assembly_overview.json"
-            fake = _FakeLlm({"assembly_description": "- one part", "partslist": "- part", "assembly_name_guess": "Fixture", "primary_function": "Holding"})
+            fake = _FakeLlm({"assembly_description": "one part", "partslist": ["part"], "assembly_name_guess": "Fixture", "primary_function": ["Holding"]})
 
             response = run_assembly_analysis(
                 artifacts=artifacts,
@@ -111,9 +111,10 @@ class AssemblyAnalysisNodeTests(unittest.TestCase):
 
             saved = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(response["status"], "complete")
-            self.assertEqual(saved["analysis"]["assembly_name_guess"], "Fixture")
-            self.assertEqual(saved["execution"]["llm_profile"], "gpt_5_4")
-            self.assertEqual(len(saved["images_used"]), 1)
+            self.assertEqual(saved["assembly_name_guess"], "Fixture")
+            self.assertEqual(response["run_record"]["execution"]["llm_profile"], "gpt_5_4")
+            self.assertEqual(len(response["run_record"]["images_used"]), 1)
+            self.assertTrue(Path(response["run_record_path"]).is_file())
             self.assertEqual(fake.schema.__name__, "AssemblyAnalysis")
 
 
@@ -137,21 +138,15 @@ class MonopartAnalysisNodeTests(unittest.TestCase):
             bom_path = root / "bom.json"
             bom_path.write_text(json.dumps(bom), encoding="utf-8")
             overview = root / "assembly_overview.json"
-            overview.write_text(json.dumps({"analysis": {"assembly_name_guess": "Fixture", "primary_function": "Holding",
-                                                          "assembly_description": "Description", "partslist": "- ring"}}), encoding="utf-8")
+            overview.write_text(json.dumps({"assembly_name_guess": "Fixture", "primary_function": ["Holding"],
+                                            "assembly_description": "Description", "partslist": ["ring"]}), encoding="utf-8")
             output = root / "monopart_analysis/parts/part_001.json"
             fake = _FakeLlm({
                 "part_identification": "Retaining feature", "part_name_guess": "Ring", "part_color": "blue",
-                "monopart_analysis": {
-                    "material_and_mechanical_behavior": "Rigid",
-                    "bulk_behavior": "May tangle",
-                    "magazine_behavior": "Can lie flat",
-                    "nature_of_provision_guess": "Tray",
-                    "geometric_characteristics": "Annular",
-                    "gripping_analysis": "External grip",
-                    "handling_implications": "Orientation required",
-                    "intrinsic_summary": "Small annular part.",
-                },
+                "material_and_mechanical_behavior": ["Rigid"], "bulk_behavior": ["May tangle"],
+                "magazine_behavior": ["Can lie flat"], "nature_of_provision_guess": ["Tray"],
+                "geometric_characteristics": ["Annular"], "gripping_analysis": ["External grip"],
+                "handling_implications": ["Orientation required"], "intrinsic_summary": ["Small annular part."],
             })
 
             response = run_monopart_analysis(
@@ -165,11 +160,11 @@ class MonopartAnalysisNodeTests(unittest.TestCase):
 
             saved = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(response["status"], "complete")
-            self.assertEqual(saved["analysis"]["part_name_guess"], "Ring")
-            self.assertEqual(saved["execution"]["node"], "monopart_analysis")
-            instance_input = next(item for item in saved["inputs"] if item["id"] == "part_instances")
+            self.assertEqual(saved["part_name_guess"], "Ring")
+            self.assertEqual(response["run_record"]["execution"]["node"], "monopart_analysis")
+            instance_input = next(item for item in response["run_record"]["inputs"] if item["id"] == "part_instances")
             self.assertEqual(instance_input["source"], "bom")
-            self.assertEqual(saved["images_used"], ["images/parts/part_001/collage_part_001.png"])
+            self.assertEqual(response["run_record"]["images_used"], ["images/parts/part_001/collage_part_001.png"])
             self.assertEqual(fake.schema.__name__, "SinglePartAnalysis")
 
 

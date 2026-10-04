@@ -13,7 +13,7 @@ from assembly_automation.stepparser.rendering.color_generator import assign_colo
 from assembly_automation.workflows.nodes.sequence_generation.validation import validate_sequence
 
 from .inputs import build_step_states, load_mapping, unwrap_sequence
-from .collage import create_step_collages
+from .collage import create_sequence_overview, create_step_collages
 from .renderer import SequenceRenderer
 from .settings import SequenceRenderingSettings
 
@@ -86,7 +86,12 @@ def run_sequence_rendering(
     _apply_bom_colors(loaded, bom_data, configured.color_mode)
     renderer = SequenceRenderer(loaded, configured)
     images = renderer.render(states, target, progress)
-    collages = create_step_collages(images, target, configured.collage, progress)
+    step_collages = create_step_collages(images, target, configured.collage, progress)
+    sequence_overview = create_sequence_overview(
+        images, sequence_data, target, configured.collage)
+    collages = ([sequence_overview] if sequence_overview else []) + step_collages
+    if sequence_overview and progress:
+        progress("sequence_overview", 1, 1)
     manifest = {
         "status": "partial" if renderer.section_fallbacks else "complete",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -101,12 +106,15 @@ def run_sequence_rendering(
                    "after_instance_ids": state["after"]} for state in states],
         "images": images,
         "collages": collages,
+        "sequence_overview": sequence_overview,
         "section_cut_cache_entries": renderer.section_cache_entries,
         "section_cut_fallbacks": renderer.section_fallbacks,
+        "section_empty_cuts": renderer.section_empty_cuts,
         "duration_seconds": time.perf_counter() - started,
     }
     manifest_path = target / "rendering_summary.json"
     _write_json(manifest_path, manifest)
     return {"status": manifest["status"], "output_dir": str(target),
             "artifact": str(manifest_path), "images": images, "collages": collages,
+            "sequence_overview": sequence_overview,
             "rendered_steps": len(states)}

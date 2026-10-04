@@ -3,22 +3,17 @@
 from pydantic import BaseModel, Field
 
 
-class MonopartAnalysis(BaseModel):
-    material_and_mechanical_behavior: str = Field(description="Likely material, sensitive surfaces, rigidity, deformation and damage risks, with evidence and uncertainty.")
-    bulk_behavior: str = Field(description="Tendency to interlock, nest, stack, roll or tangle and implications for bulk separation.")
-    magazine_behavior: str = Field(description="Stability, stackability, protection and separator requirements in magazines or load carriers.")
-    nature_of_provision_guess: str = Field(description="Most plausible real-world provision method with concise reasoning.")
-    geometric_characteristics: str = Field(description="Dominant shape, symmetry, dimensions and distinctive geometric features.")
-    gripping_analysis: str = Field(description="Feasible gripping surfaces and strategies, orientation constraints and sensitive areas.")
-    handling_implications: str = Field(description="Intrinsic handling stability, alignment complexity and deformation risks.")
-    intrinsic_summary: str = Field(description="Concise summary of intrinsic automation-relevant characteristics.")
-
-
 class SinglePartAnalysis(BaseModel):
-    part_identification: str = Field(description="Likely task of the part in the assembly, with uncertainty where needed.")
-    part_name_guess: str = Field(description="Short suitable part name.")
-    part_color: str = Field(description="Rendered identification color, not inferred material.")
-    monopart_analysis: MonopartAnalysis
+    geometric_characteristics: list[str] = Field(description="Dominant shape, symmetry, dimensions and distinctive geometric features.")
+    part_identification: str = Field(description="Likely task of the part in the assembly.")
+    part_name_guess: str = Field(description="Short suitable part name. Max. 2 words.")
+    material_and_mechanical_behavior: list[str] = Field(description="Likely material, sensitive surfaces, rigidity, deformation and damage risks, with evidence and uncertainty.")
+    bulk_behavior: list[str] = Field(description="Tendency to interlock, nest, stack, roll or tangle and implications for bulk separation.")
+    magazine_behavior: list[str] = Field(description="Stability, stackability, protection and separator requirements in magazines or load carriers.")
+    nature_of_provision_guess: list[str] = Field(description="Most plausible real-world provision method based on bulk and magazine behaviour.")
+    handling_implications: list[str] = Field(description="Intrinsic handling stability, alignment complexity and deformation, sensitivity risks.")
+    gripping_analysis: list[str] = Field(description="Feasible gripping surfaces and strategies based on geometry characteristics and handling implications. Be aware of sensitive areas. Give 3 gripping strategies.")
+    intrinsic_summary: list[str] = Field(description="Concise summary characteristics. Tackle: Geometry, material, most likely provision method, gripping possibilities.")
 
 
 SCHEMAS = {"monopart_analysis_v1": SinglePartAnalysis}

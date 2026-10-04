@@ -1,24 +1,21 @@
-# Product rebuild
+# `assembly_automation` package
 
-This package is being filled incrementally from the existing implementation.
-It does not yet replace the working App V3 launchers.
+This is the active product implementation.
 
-- `stepparser`: CAD processing and rendering.
-- `user_agent`: conversation, document context, and user-facing tools.
-- `workflows`: explicit execution definitions, node-local prompts/schemas, shared runtime.
-- `data`: session storage, artifacts, revisions, and compatibility.
-- `app`: Streamlit and terminal adapters.
+- `stepparser` owns STEP/XCAF ingestion, assembly and part geometry, spatial
+  evidence, rendering, image selection, and diagrams.
+- `workflows/runtime` owns configuration, prompts, model construction, tools,
+  execution, and run records.
+- `workflows/nodes` contains deterministic and LLM-backed nodes with local
+  prompts and structured outputs.
+- `workflows/definitions/app_v3.py` composes the assessment workflow and its
+  review checkpoints.
+- `user_agent` owns dialogue, bounded artifact access, feedback, revisions,
+  and semantic artifact changes.
+- `app/streamlit` is the durable three-pane product UI.
+- `app/cli.py` is the terminal adapter used by `run_workflow.py` and the
+  installed `assembly-workflow` command.
 
-The configuration loader and standalone STEP parser are implemented. Run the
-parser through `scripts/test_stepparser.py`; its settings live under
-`nodes.step_preprocessing` in `configs/appsettingsv3.yaml`. Workflows call it
-through the thin `run_step_preprocessing` node adapter, which only delegates to
-`StepProcessor` and returns artifact paths. `assembly_analysis` and the
-single-part `monopart_analysis` node use the shared configured-input, prompt,
-model, tool and structured-execution runtime. The deterministic `bom_merge` node
-attaches one analysis to each unique part while preserving placed instances.
-`sequence_generation` supports initial generation and feedback-driven revision
-with deterministic BOM coverage checks. Workflow fan-out and the remaining
-nodes are still pending. App V3 still uses the existing implementation.
-
-See `docs/reorganize.md` for the source inventory, extraction order, and checks.
+Product runtime code must not import the root `agent` or `stepparser` packages,
+the archived UIs, or `research.evaluation`. Configuration for the product lives
+in `configs/appsettingsv3.yaml`; node prompts and schemas live with each node.

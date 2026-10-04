@@ -14,15 +14,15 @@ import matplotlib.image as mpimg
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Rectangle
 
-from evaluation.ffa_evaluator import (
+from research.evaluation.ffa_evaluator import (
     CATEGORY_WEIGHT,
     FIELD_TO_SUBPROCESS,
     SUBPROCESSES,
     CriterionRecord,
     _parse_assessment_file,
 )
-from evaluation.ffa_plots import _COLOR_GT, _step_ffa_from_records
-from evaluation.ffa_scoring import get_criterion_weight, resolve_ffa_value, resolve_option_id
+from research.evaluation.ffa_plots import _COLOR_GT, _step_ffa_from_records
+from research.evaluation.ffa_scoring import get_criterion_weight, resolve_ffa_value, resolve_option_id
 
 
 def _safe_float(v: Any, default: float = 0.0) -> float:

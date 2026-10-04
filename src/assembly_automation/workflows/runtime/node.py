@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
+import re
 from typing import Any, Callable, Mapping
 
 from .execution import invoke_structured
@@ -19,6 +21,26 @@ def _write_json(path: Path, value: Any) -> None:
     temporary.replace(path)
 
 
+def write_run_record(output_path: str | Path, node_id: str,
+                     record: Mapping[str, Any]) -> str:
+    """Persist execution-only data below the owning session's runlog."""
+    artifact = Path(output_path).resolve()
+    session_root = next((parent for parent in artifact.parents
+                         if parent.joinpath("manifest.json").exists()
+                         or parent.joinpath("planning_manifest.json").exists()
+                         or parent.joinpath("01_input").is_dir()), artifact.parent)
+    try:
+        relative = artifact.relative_to(session_root).with_suffix("")
+        base_name = re.sub(r"[^A-Za-z0-9._-]+", "__", relative.as_posix())
+    except ValueError:
+        base_name = artifact.stem
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+    record_name = f"{stamp}__{base_name}.run.json"
+    target = session_root / "10_runs" / node_id / record_name
+    _write_json(target, dict(record))
+    return str(target)
+
+
 def run_llm_node(
     *,
     node_id: str,
@@ -31,7 +53,6 @@ def run_llm_node(
     output_path: str | Path | None = None,
     llm: Any = None,
     tool_registry: Mapping[str, Any] | None = None,
-    result_key: str = "analysis",
 ) -> dict[str, Any]:
     """Execute one node invocation; workflow fan-out remains outside this function."""
     allowed = {"enabled", "prompts", "structured_output", "llm", "inputs", "tools", "execution"}
@@ -69,8 +90,8 @@ def run_llm_node(
 
     execution = invoke_structured(model, payload.messages, schema, tools=tools,
                                   max_tool_rounds=int(execution_settings.get("max_tool_rounds", 4)))
-    result = {
-        result_key: execution["result"],
+    product = execution["result"]
+    run_record = {
         "inputs": payload.inputs,
         "images_used": payload.images,
         "execution": {
@@ -86,6 +107,10 @@ def run_llm_node(
         },
     }
     artifact = Path(output_path).resolve() if output_path is not None else None
+    run_record_path = None
     if artifact is not None:
-        _write_json(artifact, result)
-    return {"status": "complete", "artifact": str(artifact) if artifact else None, "result": result}
+        _write_json(artifact, product)
+        run_record_path = write_run_record(artifact, node_id, run_record)
+    return {"status": "complete", "artifact": str(artifact) if artifact else None,
+            "result": product, "run_record": run_record,
+            "run_record_path": run_record_path}

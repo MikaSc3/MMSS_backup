@@ -62,10 +62,9 @@ def run_bom_merge(
     parsed: dict[str, dict[str, Any]] = {}
     for part_id, source in part_analyses.items():
         document = _read_json(source, f"analysis for {part_id}")
-        analysis = document.get("analysis")
-        if not isinstance(analysis, dict):
-            raise ValueError(f"Analysis for {part_id} requires an analysis object")
-        parsed[part_id] = analysis
+        if not isinstance(document.get("part_identification"), str):
+            raise ValueError(f"Analysis for {part_id} requires a flat monopart product object")
+        parsed[part_id] = document
 
     enriched_parts = []
     for part in parts:

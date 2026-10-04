@@ -7,12 +7,18 @@ name = "assembly-automation"
 version = "0.1.0"
 description = "Modular assembly analysis and automation assessment"
 requires-python = ">=3.12"
-dependencies = ["PyYAML>=6,<7", "pydantic>=2,<3"]
+dependencies = ["PyYAML>=6,<7", "pydantic>=2,<3", "python-pptx>=1.0,<2"]
+
+[project.scripts]
+assembly-workflow = "assembly_automation.app.cli:main"
 
 [project.optional-dependencies]
 cad-rendering = ["Pillow>=10", "numpy>=1.24"]
 sam = ["Pillow>=10", "numpy>=1.24", "torch>=2", "torchvision>=0.15", "opencv-python>=4.8", "segment-anything @ git+https://github.com/facebookresearch/segment-anything.git@6fdee8f2727f4506cfbbe553e23b895e27956588"]
-llm = ["langchain-openai>=1,<2", "langchain-core>=1,<2", "Pillow>=10", "python-dotenv>=1,<2"]
+llm = ["langchain>=1,<2", "langchain-openai>=1,<2", "langchain-core>=1,<2", "langgraph>=1,<2", "langgraph-checkpoint-sqlite>=3,<4", "Pillow>=10", "python-dotenv>=1,<2"]
+user-agent = ["langchain>=1,<2", "langchain-openai>=1,<2", "langchain-core>=1,<2", "langgraph>=1,<2", "langgraph-checkpoint-sqlite>=3,<4", "python-dotenv>=1,<2", "pypdf>=5,<7"]
+ui = ["streamlit>=1.40,<2", "Pillow>=10"]
+pdf = ["Pillow>=10"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

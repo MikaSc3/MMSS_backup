@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from assembly_automation.workflows.runtime.node import run_llm_node
+from assembly_automation.workflows.runtime.node import run_llm_node, write_run_record
 
 from .inputs import build_sequence_prompt, effective_settings
 from .structured_output import get_schema
@@ -35,15 +35,15 @@ def run_sequence_generation(
                             settings=configured, llm_profiles=llm_profiles,
                             build_payload=build_sequence_prompt, get_schema=get_schema,
                             context=context, output_path=None, llm=llm,
-                            tool_registry=tool_registry, result_key="sequence")
+                            tool_registry=tool_registry)
     if response["status"] != "complete":
         return response
     bom_source = artifacts.get("bom_enriched")
     if bom_source is None:
         raise ValueError("sequence_generation requires bom_enriched")
     bom = dict(bom_source) if isinstance(bom_source, Mapping) else json.loads(Path(bom_source).read_text(encoding="utf-8"))
-    validate_sequence(response["result"]["sequence"], bom)
-    response["result"]["execution"]["mode"] = mode
+    validate_sequence(response["result"], bom)
+    response["run_record"]["execution"]["mode"] = mode
     artifact = Path(output_path).resolve() if output_path is not None else None
     if artifact is not None:
         artifact.parent.mkdir(parents=True, exist_ok=True)
@@ -51,4 +51,6 @@ def run_sequence_generation(
         temporary.write_text(json.dumps(response["result"], ensure_ascii=False, indent=2, allow_nan=False) + "\n", encoding="utf-8")
         temporary.replace(artifact)
         response["artifact"] = str(artifact)
+        response["run_record_path"] = write_run_record(
+            artifact, "sequence_generation", response["run_record"])
     return response

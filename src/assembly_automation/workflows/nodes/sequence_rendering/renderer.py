@@ -37,6 +37,7 @@ class SequenceRenderer:
         self._assembly_bounds = bounding_box(loaded.shape)
         self._section_cache: dict[tuple[str, str, float], Any] = {}
         self.section_fallbacks: list[dict[str, Any]] = []
+        self.section_empty_cuts: list[dict[str, Any]] = []
 
     def _objects(self, instance_ids: list[str]):
         return [(self.instances[item].shape, self.instances[item].color) for item in instance_ids]
@@ -100,6 +101,17 @@ class SequenceRenderer:
                 self.section_fallbacks.append({"instance_id": instance_id, "plane": plane,
                                                "coordinate": coordinate,
                                                "error": "OCC boolean cut did not produce a valid shape"})
+            else:
+                try:
+                    bounding_box(result)
+                except ValueError:
+                    # A successful cut can legitimately remove an entire part.
+                    # Keep it out of the scene instead of passing an empty OCC
+                    # shape to camera fitting and origin-axis sizing.
+                    result = None
+                    self.section_empty_cuts.append({"instance_id": instance_id,
+                                                    "plane": plane,
+                                                    "coordinate": coordinate})
         except Exception as exc:
             result = original
             self.section_fallbacks.append({"instance_id": instance_id, "plane": plane,
@@ -112,8 +124,12 @@ class SequenceRenderer:
         return len(self._section_cache)
 
     def _section_objects(self, instance_ids: list[str], plane: str, coordinate: float):
-        return [(self._cut_shape(item, plane, coordinate), self.instances[item].color)
-                for item in instance_ids]
+        objects = []
+        for item in instance_ids:
+            shape = self._cut_shape(item, plane, coordinate)
+            if shape is not None:
+                objects.append((shape, self.instances[item].color))
+        return objects
 
     def render(self, states: list[dict[str, Any]], output_dir: Path,
                progress: Callable[[str, int, int | None], None] | None = None) -> list[dict[str, Any]]:

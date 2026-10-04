@@ -38,12 +38,12 @@ class InteractionAnalysisTests(unittest.TestCase):
         config = yaml.safe_load((workspace / "configs/appsettingsv3.yaml").read_text(encoding="utf-8"))
         self.settings = config["nodes"]["interaction_analysis"]
         self.profiles = config["llms"]["profiles"]
-        self.sequence = {"sequence": {"assembly_name": "Fixture", "steps": [
+        self.sequence = {"assembly_name": "Fixture", "steps": [
             {"step_id": 1, "step_description": "Place housing", "belongs_to": "Main",
              "base_part": None, "joining_part": "part_001", "joining_process": "Place"},
             {"step_id": 2, "step_description": "Insert second pin", "belongs_to": "Main",
              "base_part": "part_001", "joining_part": "part_002_copy1", "joining_process": "Insert"},
-        ]}}
+        ]}
         self.bom = {
             "parts": [
                 {"part_id": "part_001", "name": "Housing", "geometry": {"size": {"x": 10, "y": 20, "z": 5}}},
@@ -107,8 +107,8 @@ class InteractionAnalysisTests(unittest.TestCase):
         self.assertEqual(response["status"], "complete")
         self.assertEqual(saved["step"]["step_id"], 2)
         self.assertEqual(saved["interaction_analysis"]["joining_motion"], ["Evidence for joining_motion."])
-        self.assertIn("sequence_renderings/collage_step_02.png", saved["images_used"])
-        self.assertIn("sequence_renderings/step_02_section_xy_before_transp_0_0.png", saved["images_used"])
+        self.assertIn("sequence_renderings/collage_step_02.png", response["run_record"]["images_used"])
+        self.assertIn("sequence_renderings/step_02_section_xy_before_transp_0_0.png", response["run_record"]["images_used"])
 
     def test_fanout_settings_are_validated_but_not_executed_by_node(self):
         invalid = {**self.settings, "fanout": {"parallel": True, "max_workers": 0}}

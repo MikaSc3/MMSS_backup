@@ -19,9 +19,8 @@ def load_mapping(value: Mapping[str, Any] | str | Path, name: str) -> dict[str, 
 
 
 def unwrap_sequence(value: Mapping[str, Any] | str | Path) -> dict[str, Any]:
-    document = load_mapping(value, "assembly sequence")
-    sequence = document.get("sequence", document)
-    if not isinstance(sequence, dict) or not isinstance(sequence.get("steps"), list):
+    sequence = load_mapping(value, "assembly sequence")
+    if not isinstance(sequence.get("steps"), list):
         raise ValueError("Assembly sequence requires a steps list")
     return sequence
 

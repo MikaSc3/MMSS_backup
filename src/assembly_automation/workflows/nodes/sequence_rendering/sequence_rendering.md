@@ -18,9 +18,9 @@ result = run_sequence_rendering(
 ```
 
 Inputs are explicit so concurrent sessions cannot discover or overwrite each
-other's artifacts. The sequence may be the complete node artifact with a
-top-level `sequence` key or the sequence mapping itself. `joining_part` values
-must be BOM `instance_id` values. The STEP and BOM instance sets must match.
+other's artifacts. The sequence uses the strict flat sequence product shape;
+old top-level `sequence` wrappers are unsupported. `joining_part` values must
+be BOM `instance_id` values. The STEP and BOM instance sets must match.
 
 ## Step state
 
@@ -40,6 +40,7 @@ Each step can produce:
   translucent gray;
 - opaque XY, XZ and/or YZ section views for `before` and `after`.
 - one automatically selected `collage_step_XX.png`.
+- one ordered `collage_sequence.png` covering the complete process.
 
 The collage keeps opaque `iso1` first. It selects two complementary after-state
 views using normalized silhouette, edge, color and entropy measures, then adds
@@ -47,6 +48,15 @@ the joining-part highlight and keeps opaque `iso1` exploded as the last panel.
 The number of selected views and both fixed additions can be changed under
 `sequence_rendering.collage`. Before-state sections remain separate evidence
 and do not displace current-state views in the collage.
+
+The sequence overview uses one opaque assembled ISO1 image per step in strict
+`step_id` order. Each card shows the step number, joining process, operation
+description and added instance IDs. The grid balances its columns for the
+number of steps, centers incomplete rows and draws arrows between adjacent
+cards. Configure it with `overview_enabled`, `overview_columns` and
+`overview_tile_size` under `sequence_rendering.collage`. The Streamlit visual
+workspace lists this overview first and separates the remaining output into
+`Sequence steps` and `Sequence evidence` image sets.
 
 The cut coordinate is the center of the current joining geometry along the
 plane normal. The same coordinate is used for before and after, making the pair
@@ -63,6 +73,7 @@ step_01_iso1_joining_highlight_transp_0_0.png
 step_01_section_xy_before_transp_0_0.png
 step_01_section_xy_after_transp_0_0.png
 collage_step_01.png
+collage_sequence.png
 ```
 
 Entropy is stored as image metadata in the summary instead of being embedded in

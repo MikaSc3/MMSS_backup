@@ -9,6 +9,7 @@ from io import BytesIO
 import json
 import mimetypes
 from pathlib import Path
+import re
 from typing import Any, Mapping
 
 import yaml
@@ -40,7 +41,12 @@ def load_prompt(path: str | Path, prompt_id: str, expected_role: str) -> str:
 
 
 def _format(value: Any, variables: Mapping[str, Any]) -> Any:
-    return value.format_map(variables) if isinstance(value, str) else value
+    if not isinstance(value, str):
+        return value
+    match = re.fullmatch(r"\{([A-Za-z_][A-Za-z0-9_]*)\}", value)
+    if match and match.group(1) in variables:
+        return variables[match.group(1)]
+    return value.format_map(variables)
 
 
 def _get(value: Any, path: str) -> Any:

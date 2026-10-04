@@ -26,9 +26,13 @@ class SequenceCollageSettings:
     entropy_weight: float = 0.15
     crop_whitespace: bool = True
     crop_padding_px: int = 12
+    overview_enabled: bool = True
+    overview_columns: int = 3
+    overview_tile_size: tuple[int, int] = (560, 315)
 
     def __post_init__(self):
-        for name in ("enabled", "include_highlight", "include_exploded", "crop_whitespace"):
+        for name in ("enabled", "include_highlight", "include_exploded", "crop_whitespace",
+                     "overview_enabled"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"sequence_rendering.collage.{name} must be boolean")
         if type(self.additional_views) is not int or self.additional_views < 0:
@@ -40,8 +44,16 @@ class SequenceCollageSettings:
             raise ValueError("collage.tile_size must contain two positive integers")
         if type(self.crop_padding_px) is not int or self.crop_padding_px < 0:
             raise ValueError("collage.crop_padding_px must be a nonnegative integer")
+        if type(self.overview_columns) is not int or not 1 <= self.overview_columns <= 6:
+            raise ValueError("collage.overview_columns must be an integer from 1 to 6")
+        if (not isinstance(self.overview_tile_size, (list, tuple))
+                or len(self.overview_tile_size) != 2
+                or any(type(value) is not int or value <= 0
+                       for value in self.overview_tile_size)):
+            raise ValueError("collage.overview_tile_size must contain two positive integers")
         _number(self.entropy_weight, "collage.entropy_weight", 0, 1)
         object.__setattr__(self, "tile_size", tuple(self.tile_size))
+        object.__setattr__(self, "overview_tile_size", tuple(self.overview_tile_size))
 
 
 @dataclass(frozen=True)

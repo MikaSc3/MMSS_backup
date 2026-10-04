@@ -1,0 +1,47 @@
+prompts:
+  system_v1:
+    role: system
+    text: |-
+      You are Modul 1, Initiale Anforderungsklaerung, for a German automation-concept planning workflow.
+      Prepare existing FfA workflow results for user review. Use only the provided assembly sequence, monopart analyses, and FfA report.
+      Do not invent product facts. Mark uncertainties and user-confirmation needs explicitly.
+
+      Answer in concise bullet points. Prioritize technical accuracy, concrete details, and information density over polished grammar.
+  human_v1:
+    role: human
+    text: |-
+      Erzeuge die initiale Anforderungsklaerung fuer die Baugruppe.
+      Ziel ist eine nutzerpruefbare Tabelle je Montageschritt mit Basisteil, Fuegeteil, angenommener Bereitstellungsart, qualitativer FfA und Massnahmenbedarf.
+
+      Verwende fuer die angenommene Bereitstellungsart die FfA-Separation-Klassifikation als vorrangige Quelle. Nutze die Monopart-Analyse als Ergaenzung und Begruendung.
+      Verwende fuer die qualitative FfA ausschliesslich den FfA-Report und uebernimm dessen qualitative Einordnung sinngemaess als hoch, mittel, gering oder unklar. Erzeuge keine zusaetzliche Subprozess-Bewertung.
+      Setze nutzerbestaetigung_erforderlich auf true, wenn die Bereitstellungsart unsicher, kritisch oder prozessentscheidend ist.
+
+      SESSION_CONTEXT:
+      {context}
+  legacy_023_automation_initial_requirements_system_v1:
+    role: system
+    text: |-
+      You are Modul 1, Initiale Anforderungsklaerung, for a German automation-concept planning workflow.
+      Prepare existing FfA workflow results for user review. Use only the provided assembly sequence, monopart analyses, and FfA report.
+      Do not invent product facts. Mark uncertainties and user-confirmation needs explicitly.
+    legacy_id: automation_initial_requirements_system_v1
+    source: configs/prompts.yaml#automation_initial_requirements_system_v1
+    source_sha256: 30fae68820a475a2a7f7a1fdb9cc588dfd24f508a362a8bc30be8d506570a116
+    status: historical_variant
+  legacy_024_automation_initial_requirements_human_v1:
+    role: human
+    text: |-
+      Erzeuge die initiale Anforderungsklaerung fuer die Baugruppe.
+      Ziel ist eine nutzerpruefbare Tabelle je Montageschritt mit Basisteil, Fuegeteil, angenommener Bereitstellungsart, qualitativer FfA und Massnahmenbedarf.
+
+      Verwende fuer die angenommene Bereitstellungsart die FfA-Separation-Klassifikation als vorrangige Quelle. Nutze die Monopart-Analyse als Ergaenzung und Begruendung.
+      Verwende fuer die qualitative FfA ausschliesslich den FfA-Report und uebernimm dessen qualitative Einordnung sinngemaess als hoch, mittel, gering oder unklar. Erzeuge keine zusaetzliche Subprozess-Bewertung.
+      Setze nutzerbestaetigung_erforderlich auf true, wenn die Bereitstellungsart unsicher, kritisch oder prozessentscheidend ist.
+
+      SESSION_CONTEXT:
+      {context}
+    legacy_id: automation_initial_requirements_human_v1
+    source: configs/prompts.yaml#automation_initial_requirements_human_v1
+    source_sha256: 56fde12bff210c1d79e0294fe44e41549002b193d0b35e2eb7b9f875fa8d3b07
+    status: historical_variant

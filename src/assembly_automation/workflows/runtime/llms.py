@@ -21,7 +21,7 @@ def create_llm(profile_name: str, profiles: Mapping[str, Any], overrides: Mappin
     if not isinstance(configured, dict):
         raise ValueError(f"Unknown LLM profile: {profile_name}")
     overrides = dict(overrides or {})
-    allowed_overrides = {"max_completion_tokens", "temperature", "seed"}
+    allowed_overrides = {"max_completion_tokens", "temperature", "seed", "timeout", "max_retries"}
     unknown_overrides = set(overrides) - allowed_overrides
     if unknown_overrides:
         raise ValueError(f"Unsupported LLM overrides: {sorted(unknown_overrides)}")
@@ -29,6 +29,7 @@ def create_llm(profile_name: str, profiles: Mapping[str, Any], overrides: Mappin
     allowed = {"provider", "model", "deployment", "deployment_env", "endpoint_env",
                "base_url", "base_url_env", "api_key_env", "api_version",
                "api_version_env", "max_completion_tokens", "temperature", "seed"}
+    allowed.update({"timeout", "max_retries"})
     unknown = set(profile) - allowed
     if unknown:
         raise ValueError(f"Unknown settings for LLM profile {profile_name}: {sorted(unknown)}")
@@ -36,7 +37,8 @@ def create_llm(profile_name: str, profiles: Mapping[str, Any], overrides: Mappin
     model = profile.get("model")
     if not isinstance(model, str) or not model:
         raise ValueError(f"LLM profile {profile_name} requires model")
-    common = {key: profile[key] for key in ("temperature", "seed", "max_completion_tokens") if key in profile}
+    common = {key: profile[key] for key in (
+        "temperature", "seed", "max_completion_tokens", "timeout", "max_retries") if key in profile}
 
     from langchain_openai import AzureChatOpenAI, ChatOpenAI
 

@@ -1,0 +1,91 @@
+# Prompt migration map
+
+The former global `configs/prompts.yaml` library has been localized by owning module. Active prompts use the current artifact schemas; every source prompt is also retained as a numbered historical variant with its source ID and SHA-256 hash.
+
+`legacy_###_*` prompts preserve experiments and old behavior for comparison. They are not the default because some refer to retired tool names, wrapper objects, input keys, or enum values. Literal braces are escaped for the shared prompt formatter; `{context}` and `{strategy}` remain intentional template variables.
+
+| No. | Legacy prompt ID | Role | Owning module | Local prompt ID |
+|---:|---|---|---|---|
+| 001 | `content_workflow_agent_v3` | system | `user_agent/prompts.yaml` | `legacy_001_content_workflow_agent_v3` |
+| 002 | `readadditional_data_tool_v1` | system | `workflows/nodes/document_summary/prompts.yaml` | `legacy_002_readadditional_data_tool_v1` |
+| 003 | `assembly_analyst_v2_0` | system | `workflows/nodes/assembly_analysis/prompts.yaml` | `legacy_003_assembly_analyst_v2_0` |
+| 004 | `assembly_analyst_v2_0_critical` | system | `workflows/nodes/assembly_analysis/prompts.yaml` | `legacy_004_assembly_analyst_v2_0_critical` |
+| 005 | `assembly_analysis_task_v2_0` | human | `workflows/nodes/assembly_analysis/prompts.yaml` | `legacy_005_assembly_analysis_task_v2_0` |
+| 006 | `monopart_analyst_v2_0` | system | `workflows/nodes/monopart_analysis/prompts.yaml` | `legacy_006_monopart_analyst_v2_0` |
+| 007 | `monopart_analyst_v2_0_critical` | system | `workflows/nodes/monopart_analysis/prompts.yaml` | `legacy_007_monopart_analyst_v2_0_critical` |
+| 008 | `monopart_analysis_task_v2_0` | human | `workflows/nodes/monopart_analysis/prompts.yaml` | `legacy_008_monopart_analysis_task_v2_0` |
+| 009 | `monopart_analysis_task_v2_0_critical` | human | `workflows/nodes/monopart_analysis/prompts.yaml` | `legacy_009_monopart_analysis_task_v2_0_critical` |
+| 010 | `assembly_sequence_gt_describer_v1` | system | `workflows/nodes/sequence_generation/prompts.yaml` | `legacy_010_assembly_sequence_gt_describer_v1` |
+| 011 | `assembly_sequence_creater_v1` | system | `workflows/nodes/sequence_generation/prompts.yaml` | `legacy_011_assembly_sequence_creater_v1` |
+| 012 | `Interaction_Analyst_V2_0` | system | `workflows/nodes/interaction_analysis/prompts.yaml` | `legacy_012_interaction_analyst_v2_0` |
+| 013 | `Interaction_Analyst_V2_0_critical` | system | `workflows/nodes/interaction_analysis/prompts.yaml` | `legacy_013_interaction_analyst_v2_0_critical` |
+| 014 | `Analyse_Interaction_V2_0` | human | `workflows/nodes/interaction_analysis/prompts.yaml` | `legacy_014_analyse_interaction_v2_0` |
+| 015 | `Analyse_Interaction_V2_0_critical` | human | `workflows/nodes/interaction_analysis/prompts.yaml` | `legacy_015_analyse_interaction_v2_0_critical` |
+| 016 | `automation_expert_v2_0_neutral` | system | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_016_automation_expert_v2_0_neutral` |
+| 017 | `automation_expert_v2_0_positive` | system | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_017_automation_expert_v2_0_positive` |
+| 018 | `automation_expert_v2_0_critical` | system | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_018_automation_expert_v2_0_critical` |
+| 019 | `ffa_assessment_task_v2_0_base` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_019_ffa_assessment_task_v2_0_base` |
+| 020 | `ffa_enum_options_minimal` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_020_ffa_enum_options_minimal` |
+| 021 | `ffa_enum_options_with_explanations` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_021_ffa_enum_options_with_explanations` |
+| 022 | `WITH_EXPLAINATION_AND_EXAMPLES` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_022_with_explaination_and_examples` |
+| 023 | `automation_initial_requirements_system_v1` | system | `workflows/nodes/automation_requirements/prompts.yaml` | `legacy_023_automation_initial_requirements_system_v1` |
+| 024 | `automation_initial_requirements_human_v1` | human | `workflows/nodes/automation_requirements/prompts.yaml` | `legacy_024_automation_initial_requirements_human_v1` |
+| 025 | `automation_process_principles_system_v1` | system | `workflows/nodes/process_principles/prompts.yaml` | `legacy_025_automation_process_principles_system_v1` |
+| 026 | `automation_process_principles_human_v1` | human | `workflows/nodes/process_principles/prompts.yaml` | `legacy_026_automation_process_principles_human_v1` |
+| 027 | `automation_variant_generator_system_v1` | system | `workflows/nodes/automation_variants/prompts.yaml` | `legacy_027_automation_variant_generator_system_v1` |
+| 028 | `automation_variant_generator_human_v1` | human | `workflows/nodes/automation_variants/prompts.yaml` | `legacy_028_automation_variant_generator_human_v1` |
+| 029 | `automation_layout_planer_system_v1` | system | `workflows/nodes/layout_planning/prompts.yaml` | `legacy_029_automation_layout_planer_system_v1` |
+| 030 | `automation_layout_planer_human_v1` | human | `workflows/nodes/layout_planning/prompts.yaml` | `legacy_030_automation_layout_planer_human_v1` |
+| 031 | `automation_variant_evaluator_system_v1` | system | `workflows/nodes/automation_variants/prompts.yaml` | `legacy_031_automation_variant_evaluator_system_v1` |
+| 032 | `automation_variant_evaluator_human_v1` | human | `workflows/nodes/automation_variants/prompts.yaml` | `legacy_032_automation_variant_evaluator_human_v1` |
+| 033 | `automation_station_planner_system_v1` | system | `workflows/nodes/layout_planning/prompts.yaml` | `legacy_033_automation_station_planner_system_v1` |
+| 034 | `automation_station_planner_human_v1` | human | `workflows/nodes/layout_planning/prompts.yaml` | `legacy_034_automation_station_planner_human_v1` |
+| 035 | `automation_workplace_designer_system_v1` | system | `workflows/nodes/layout_planning/prompts.yaml` | `legacy_035_automation_workplace_designer_system_v1` |
+| 036 | `automation_workplace_designer_human_v1` | human | `workflows/nodes/layout_planning/prompts.yaml` | `legacy_036_automation_workplace_designer_human_v1` |
+| 037 | `cad_analysis_expert_v1` | system | `workflows/nodes/assembly_analysis/prompts.yaml` | `legacy_037_cad_analysis_expert_v1` |
+| 038 | `assembly_analyst_v1` | system | `workflows/nodes/assembly_analysis/prompts.yaml` | `legacy_038_assembly_analyst_v1` |
+| 039 | `assembly_analysis_task_v1` | human | `workflows/nodes/assembly_analysis/prompts.yaml` | `legacy_039_assembly_analysis_task_v1` |
+| 040 | `monopart_analyst_v1` | system | `workflows/nodes/monopart_analysis/prompts.yaml` | `legacy_040_monopart_analyst_v1` |
+| 041 | `monopart_analysis_task_v1` | human | `workflows/nodes/monopart_analysis/prompts.yaml` | `legacy_041_monopart_analysis_task_v1` |
+| 042 | `monopart_analysis_task_v2` | human | `workflows/nodes/monopart_analysis/prompts.yaml` | `legacy_042_monopart_analysis_task_v2` |
+| 043 | `monopart_analysis_task_v3` | human | `workflows/nodes/monopart_analysis/prompts.yaml` | `legacy_043_monopart_analysis_task_v3` |
+| 044 | `assembly_sequence_planner_expert_v1` | system | `workflows/nodes/sequence_generation/prompts.yaml` | `legacy_044_assembly_sequence_planner_expert_v1` |
+| 045 | `generate_assembly_sequence_task_v3` | human | `workflows/nodes/sequence_generation/prompts.yaml` | `legacy_045_generate_assembly_sequence_task_v3` |
+| 046 | `generate_assembly_sequence_task_v4` | human | `workflows/nodes/sequence_generation/prompts.yaml` | `legacy_046_generate_assembly_sequence_task_v4` |
+| 047 | `generate_assembly_sequence_gt` | human | `workflows/nodes/sequence_generation/prompts.yaml` | `legacy_047_generate_assembly_sequence_gt` |
+| 048 | `generate_step_descriptions_from_gt_v1` | human | `workflows/nodes/sequence_generation/prompts.yaml` | `legacy_048_generate_step_descriptions_from_gt_v1` |
+| 049 | `critical_reviewer_v1` | system | `workflows/nodes/sequence_generation/prompts.yaml` | `legacy_049_critical_reviewer_v1` |
+| 050 | `validate_assembly_sequence_task_v1` | human | `workflows/nodes/sequence_generation/prompts.yaml` | `legacy_050_validate_assembly_sequence_task_v1` |
+| 051 | `Interaction_Analyst_V1` | system | `workflows/nodes/interaction_analysis/prompts.yaml` | `legacy_051_interaction_analyst_v1` |
+| 052 | `Interaction_Analyst_V2` | system | `workflows/nodes/interaction_analysis/prompts.yaml` | `legacy_052_interaction_analyst_v2` |
+| 053 | `Analyse_Interaction_V2` | human | `workflows/nodes/interaction_analysis/prompts.yaml` | `legacy_053_analyse_interaction_v2` |
+| 054 | `automation_expert_v1` | system | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_054_automation_expert_v1` |
+| 055 | `automation_expert_v2_neutral` | system | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_055_automation_expert_v2_neutral` |
+| 056 | `ffa_assessment_task_v1` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_056_ffa_assessment_task_v1` |
+| 057 | `ffa_seperation_V1` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_057_ffa_seperation_v1` |
+| 058 | `ffa_handling_V1` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_058_ffa_handling_v1` |
+| 059 | `ffa_positioning_V1` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_059_ffa_positioning_v1` |
+| 060 | `ffa_joining_V1` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_060_ffa_joining_v1` |
+| 061 | `ffa_assessment_task_v1_with_examples` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_061_ffa_assessment_task_v1_with_examples` |
+| 062 | `ffa_assessment_task_v2_basic` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_062_ffa_assessment_task_v2_basic` |
+| 063 | `agent1_system` | system | `user_agent/prompts.yaml` | `legacy_063_agent1_system` |
+| 064 | `agent1_user` | human | `user_agent/prompts.yaml` | `legacy_064_agent1_user` |
+| 065 | `agent2_system` | system | `user_agent/prompts.yaml` | `legacy_065_agent2_system` |
+| 066 | `agent2_user` | human | `user_agent/prompts.yaml` | `legacy_066_agent2_user` |
+| 067 | `agent3_system` | system | `user_agent/prompts.yaml` | `legacy_067_agent3_system` |
+| 068 | `ffa_reporter_workflow_system_prompt` | system | `workflows/nodes/report_synthesis/prompts.yaml` | `legacy_068_ffa_reporter_workflow_system_prompt` |
+| 069 | `ffa_reporter_workflow_human_message_template` | human | `workflows/nodes/report_synthesis/prompts.yaml` | `legacy_069_ffa_reporter_workflow_human_message_template` |
+| 070 | `agent3_user` | human | `user_agent/prompts.yaml` | `legacy_070_agent3_user` |
+| 071 | `ffa_assessment_task_v2_with_explanation` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_071_ffa_assessment_task_v2_with_explanation` |
+| 072 | `ffa_assessment_task_v3_with_explanation_examples_guidelines` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_072_ffa_assessment_task_v3_with_explanation_examples_guidelines` |
+| 073 | `system_prompt_default` | system | `user_agent/prompts.yaml` | `legacy_073_system_prompt_default` |
+| 074 | `assembly_analyst_v2_0_app` | system | `workflows/nodes/assembly_analysis/prompts.yaml` | `legacy_074_assembly_analyst_v2_0_app` |
+| 075 | `assembly_analysis_task_v2_0_app` | human | `workflows/nodes/assembly_analysis/prompts.yaml` | `legacy_075_assembly_analysis_task_v2_0_app` |
+| 076 | `monopart_analyst_v2_0_app` | system | `workflows/nodes/monopart_analysis/prompts.yaml` | `legacy_076_monopart_analyst_v2_0_app` |
+| 077 | `monopart_analysis_task_v2_0_app` | human | `workflows/nodes/monopart_analysis/prompts.yaml` | `legacy_077_monopart_analysis_task_v2_0_app` |
+| 078 | `assembly_sequence_gt_describer_v1_app` | system | `workflows/nodes/sequence_generation/prompts.yaml` | `legacy_078_assembly_sequence_gt_describer_v1_app` |
+| 079 | `generate_step_descriptions_from_gt_v1_app` | human | `workflows/nodes/sequence_generation/prompts.yaml` | `legacy_079_generate_step_descriptions_from_gt_v1_app` |
+| 080 | `Interaction_Analyst_V2_0_app` | system | `workflows/nodes/interaction_analysis/prompts.yaml` | `legacy_080_interaction_analyst_v2_0_app` |
+| 081 | `Analyse_Interaction_V2_0_app` | human | `workflows/nodes/interaction_analysis/prompts.yaml` | `legacy_081_analyse_interaction_v2_0_app` |
+| 082 | `automation_expert_v2_0_neutral_app` | system | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_082_automation_expert_v2_0_neutral_app` |
+| 083 | `ffa_assessment_task_v2_0_base_app` | human | `workflows/nodes/ffa_assessment/prompts.yaml` | `legacy_083_ffa_assessment_task_v2_0_base_app` |

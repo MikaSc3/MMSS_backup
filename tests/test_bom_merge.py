@@ -26,8 +26,8 @@ class BomMergeTests(unittest.TestCase):
 
     def test_enriches_definitions_once_and_preserves_instances(self):
         analyses = {
-            "part_001": {"analysis": {"part_name_guess": "Retaining ring"}},
-            "part_002": {"analysis": {"part_name_guess": "Shaft"}},
+            "part_001": {"part_identification": "Retains", "part_name_guess": "Retaining ring"},
+            "part_002": {"part_identification": "Transfers load", "part_name_guess": "Shaft"},
         }
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "bom_enriched.json"
@@ -43,12 +43,12 @@ class BomMergeTests(unittest.TestCase):
     def test_requires_complete_analysis_set_by_default(self):
         with self.assertRaisesRegex(ValueError, "part_002"):
             run_bom_merge(bom=self.bom,
-                          part_analyses={"part_001": {"analysis": {"part_name_guess": "Ring"}}})
+                          part_analyses={"part_001": {"part_identification": "Retains", "part_name_guess": "Ring"}})
 
     def test_can_return_partial_bom_explicitly(self):
         response = run_bom_merge(
             bom=self.bom,
-            part_analyses={"part_001": {"analysis": {"part_name_guess": "Ring"}}},
+            part_analyses={"part_001": {"part_identification": "Retains", "part_name_guess": "Ring"}},
             settings={"require_all_parts": False},
         )
         self.assertEqual(response["status"], "partial")

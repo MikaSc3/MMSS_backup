@@ -1,0 +1,223 @@
+version: ffa_scoring_v1
+status: authoritative_historical_baseline
+source:
+  file: ffa_scoring_mapping.json
+  sha256: e6c7ab7aa3b18d3bd58fffc0a846880a36170d32d3718cb487223ad05008a4b3
+subprocess_weights:
+  separation: 0.25
+  handling: 0.25
+  positioning: 0.25
+  joining: 0.25
+criteria:
+  nature_of_provision:
+    subprocess: separation
+    criterion_weight: 1.0
+    options:
+      1:
+        label: in magazine (defined position and orientation)
+        score: 1.0
+      2:
+        label: in magazine (without defined position or orientation)
+        score: 0.5
+      3:
+        label: 'in magazine (packaging issues: individual packaging or sticky intermediate layer)'
+        score: 0.1
+      4:
+        label: in magazine (with non-sticky intermediate layer)
+        score: 0.5
+      5:
+        label: 'bulk cargo (easy to automated: e.g. spiral conveyors)'
+        score: 0.8
+      6:
+        label: bulk cargo (automation with bin picking)
+        score: 0.5
+      7:
+        label: 'bulk cargo (no automation possible: e.g. risk of catching)'
+        score: 0.0
+  part_rigidity:
+    subprocess: handling
+    criterion_weight: 0.42
+    options:
+      1:
+        label: rigid
+        score: 1.0
+      2:
+        label: elastic
+        score: 0.5
+      3:
+        label: flexible
+        score: 0.0
+  gripping_areas:
+    subprocess: handling
+    criterion_weight: 0.24
+    options:
+      1:
+        label: pronounced gripping area existing
+        score: 1.0
+      2:
+        label: small gripping area existing
+        score: 0.5
+      3:
+        label: no defined gripping area existing
+        score: 0.0
+  orientation_features:
+    subprocess: handling
+    criterion_weight: 0.17
+    options:
+      1:
+        label: mechanical self-adjustement in gripper possible
+        score: 1.0
+      2:
+        label: optical measurement in part delivery necessary
+        score: 0.7
+      3:
+        label: seperate aligning station necessary
+        score: 0.3
+      4:
+        label: no reference points for orientation
+        score: 0.0
+  surface_sensibility:
+    subprocess: handling
+    criterion_weight: 0.17
+    options:
+      1:
+        label: immune
+        score: 1.0
+      2:
+        label: easily scratched, easily broken, easily defomed
+        score: 0.0
+  accuracy_of_target_position:
+    subprocess: positioning
+    criterion_weight: 0.03
+    options:
+      1:
+        label: base part position defined / joining point position defined
+        score: 1.0
+      2:
+        label: base part position defined / joining point position with tolerance
+        score: 0.5
+      3:
+        label: base part position with tolerance / joining point position defined
+        score: 0.5
+      4:
+        label: base part position with tolerance / joining point position with tolerance
+        score: 0.0
+  positioning_aids:
+    subprocess: positioning
+    criterion_weight: 0.19
+    options:
+      1:
+        label: insertion chamfers and stopping edge
+        score: 1.0
+      2:
+        label: insertion chamfers
+        score: 0.7
+      3:
+        label: stopping edges
+        score: 0.3
+      4:
+        label: no positioning aids
+        score: 0.0
+  additional_orientation_by_rotation:
+    subprocess: positioning
+    criterion_weight: 0.06
+    options:
+      1:
+        label: not required
+        score: 1.0
+      2:
+        label: mechanical guidance
+        score: 0.7
+      3:
+        label: optical information necessary
+        score: 0.2
+      4:
+        label: required but not feasible
+        score: 0.0
+  accessibility_to_joining_position:
+    subprocess: positioning
+    criterion_weight: 0.28
+    options:
+      1:
+        label: visibility given / tool clearances given
+        score: 1.0
+      2:
+        label: no visibility / tool clearances given
+        score: 0.7
+      3:
+        label: visibility given / no tool clearances
+        score: 0.2
+      4:
+        label: no visibility / no tool clearances (e.g. blocked by cables, hoses etc.)
+        score: 0.0
+  positioning_motion:
+    subprocess: positioning
+    criterion_weight: 0.06
+    options:
+      1:
+        label: linear joining motion
+        score: 1.0
+      2:
+        label: path motion necessary
+        score: 0.7
+      3:
+        label: sensor-guided (linear/path)
+        score: 0.3
+  positioning_tolerances:
+    subprocess: positioning
+    criterion_weight: 0.13
+    options:
+      1:
+        label: +/- x mm
+        score: 1.0
+      2:
+        label: +/- 0.x mm
+        score: 0.7
+      3:
+        label: 0 clearance
+        score: 0.3
+      4:
+        label: adjustment of end position after assembly required
+        score: 0.0
+  stability_in_positioned_state:
+    subprocess: positioning
+    criterion_weight: 0.25
+    options:
+      1:
+        label: stable, self-holding
+        score: 1.0
+      2:
+        label: holding during joining process required
+        score: 0.0
+  feeding_of_joining_element:
+    subprocess: joining
+    criterion_weight: 0.5
+    options:
+      1:
+        label: not necessary
+        score: 1.0
+      2:
+        label: automatable with standard solution
+        score: 0.8
+      3:
+        label: limited feeding (e.g. accessibility)
+        score: 0.3
+      4:
+        label: automatable with special development
+        score: 0.3
+      5:
+        label: special development, not foreseeable
+        score: 0.0
+  fixing_of_mounted_part:
+    subprocess: joining
+    criterion_weight: 0.5
+    options:
+      1:
+        label: automatable with standard solution
+        score: 1.0
+      2:
+        label: automatable with special development
+        score: 0.3
+      3:
+        label: special development, not foreseeable
+        score: 0.0

@@ -9,17 +9,13 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(WORKSPACE_ROOT / "src"))
 DEFAULT_SESSION_DIR = WORKSPACE_ROOT / "data/stepparser_tests/2026-09-18_190043_317be9cf/003_IPA_Reducer_Case"
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv(WORKSPACE_ROOT / "agent/.env")
-except ImportError:
-    pass
-
 from assembly_automation.workflows.nodes.monopart_analysis import run_monopart_analysis
 from assembly_automation.workflows.runtime.configuration import load_settings
+from assembly_automation.workflows.runtime.environment import load_project_environment
 
 
 def main(argv=None):
+    load_project_environment(WORKSPACE_ROOT)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("session_dir", nargs="?", type=Path, default=DEFAULT_SESSION_DIR)
     selection = parser.add_mutually_exclusive_group()

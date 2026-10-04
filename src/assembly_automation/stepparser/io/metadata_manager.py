@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -13,7 +14,14 @@ def write_json(path: Path, value: dict) -> None:
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
             stream.write(content + "\n")
-        os.replace(temporary, path)
+        for attempt in range(8):
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError:
+                if attempt == 7:
+                    raise
+                time.sleep(0.02 * (attempt + 1))
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)

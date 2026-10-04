@@ -33,6 +33,52 @@ llms:
       max_completion_tokens: 8000
       temperature: 0
 
+user_agent:
+  enabled: true
+  introduction:
+    max_completion_tokens: 600
+    timeout_seconds: 12
+    max_retries: 1
+    message: >-
+      Introduce yourself to the user. Briefly explain that you will guide STEP
+      preprocessing, assembly and part review, sequence review, and the final
+      automation assessment. The user has not uploaded an assembly yet, so invite
+      them to upload a STEP file. Do not use tools or claim processing has started.
+  llm:
+    profile: gpt_5_4
+    max_completion_tokens: 4000
+  prompt: system_v1
+  max_tool_rounds: 8
+  artifact_change:
+    enabled: true
+    llm:
+      profile: gpt_5_4
+      max_completion_tokens: 1800
+      temperature: 0
+    prompts:
+      system: system_v1
+      human: human_v1
+    structured_output: artifact_change_v1
+  tools:
+    - inspect_session
+    - ingest_documents
+    - record_context_change
+    - analyse_assembly
+    - analyse_monoparts
+    - change_artifact
+    - generate_sequence
+    - revise_sequence
+    - ffa_evaluation
+    - read_artifact
+    - summarize_parts
+    - automation_concept_idea_generator
+    - automation_concept_planner
+    - revise_automation_concept
+    - layout_planner
+    - revise_layout
+    - cost_planner
+    - generate_engineering_powerpoint
+
 nodes:
   step_preprocessing:
     color_mode: geometry
@@ -144,6 +190,9 @@ nodes:
         max_chars: 12000
   monopart_analysis:
     enabled: true
+    fanout:
+      parallel: true
+      max_workers: 6
     llm:
       profile: gpt_5_4
       max_completion_tokens: 5000
@@ -180,7 +229,7 @@ nodes:
         enabled: true
         kind: json
         source: assembly_overview
-        fields: [analysis.assembly_name_guess, analysis.primary_function, analysis.assembly_description, analysis.partslist]
+        fields: [assembly_name_guess, primary_function, assembly_description, partslist]
         max_chars: 12000
       part_images:
         enabled: true
@@ -236,7 +285,7 @@ nodes:
           required: true
           kind: json
           source: assembly_overview
-          fields: [analysis]
+          fields: [assembly_name_guess, primary_function, assembly_description, partslist]
           max_chars: 15000
         enriched_bom:
           enabled: true
@@ -283,7 +332,7 @@ nodes:
           required: true
           kind: json
           source: initial_sequence
-          fields: [sequence]
+          fields: [assembly_name, assembly_description, sequence_rationale, sequence_notation, steps]
           max_chars: 30000
         summarized_user_feedback:
           enabled: true
@@ -323,6 +372,9 @@ nodes:
       include_exploded: true
       analysis_size: 128
       tile_size: [960, 540]
+      overview_enabled: true
+      overview_columns: 3
+      overview_tile_size: [560, 315]
       entropy_weight: 0.15
       crop_whitespace: true
       crop_padding_px: 12
@@ -377,7 +429,7 @@ nodes:
         enabled: true
         kind: json
         source: assembly_overview
-        fields: [analysis.assembly_name_guess, analysis.primary_function, analysis.assembly_description]
+        fields: [assembly_name_guess, primary_function, assembly_description]
         max_chars: 10000
       current_step_collage:
         enabled: true
@@ -409,3 +461,223 @@ nodes:
         kind: text
         source: user_context
         max_chars: 12000
+  ffa_assessment:
+    enabled: true
+    llm:
+      profile: gpt_5_4
+      max_completion_tokens: 8000
+    prompts:
+      system: system_v1
+      human: human_v1
+    structured_output: ffa_assessment_v1
+    tools: []
+    execution:
+      max_tool_rounds: 4
+    fanout:
+      parallel: true
+      max_workers: 6
+    inputs:
+      assembly_step:
+        enabled: true
+        required: true
+        kind: json
+        source: assembly_step
+        fields: [step_id, step_description, belongs_to, base_part, joining_part, joining_process]
+      base_part:
+        enabled: true
+        required: true
+        kind: json
+        source: base_part
+        max_chars: 14000
+      joining_parts:
+        enabled: true
+        required: true
+        kind: json
+        source: joining_parts
+        max_chars: 30000
+      interaction_analysis:
+        enabled: true
+        required: true
+        kind: json
+        source: interaction_analysis
+        max_chars: 24000
+      assembly_overview:
+        enabled: true
+        kind: json
+        source: assembly_overview
+        fields: [assembly_name_guess, primary_function, assembly_description]
+        max_chars: 10000
+      current_step_collage:
+        enabled: true
+        required: true
+        kind: images
+        source: sequence_renderings
+        path: "."
+        patterns: ["collage_step_{step_id:02d}.png"]
+        limit: 1
+        downscale_factor: 0.7
+      before_section_images:
+        enabled: true
+        kind: images
+        source: sequence_renderings
+        path: "."
+        patterns: ["step_{step_id:02d}_section_*_before_transp_0_0.png"]
+        limit: 3
+        downscale_factor: 0.7
+      joining_part_image:
+        enabled: true
+        required: true
+        kind: images
+        source: images
+        path: "parts/{joining_part_id}"
+        patterns: ["collage_{joining_part_id}.png"]
+        limit: 1
+        downscale_factor: 0.7
+      user_context:
+        enabled: true
+        kind: text
+        source: user_context
+        max_chars: 12000
+  ffa_scoring:
+    enabled: true
+    mapping: ffa_scoring_v1
+    strict: true
+  report_synthesis:
+    enabled: true
+    llm:
+      profile: gpt_5_4
+      max_completion_tokens: 10000
+    prompts:
+      system: system_v1
+      human: human_v1
+    structured_output: report_insights_v1
+    tools: []
+    execution:
+      max_tool_rounds: 4
+    inputs:
+      report_evidence:
+        enabled: true
+        required: true
+        kind: json
+        source: report_evidence
+        max_chars: 90000
+      user_context:
+        enabled: true
+        kind: text
+        source: user_context
+        max_chars: 12000
+  report_rendering:
+    enabled: true
+    # HTML is the only active format until a stable product PDF renderer is selected.
+    formats: [html]
+    page_size: [11.69, 8.27]
+    dpi: 160
+    profiles:
+      executive:
+        enabled: true
+        include_steps: false
+        include_parts: false
+        max_findings: 5
+        max_recommendations: 5
+      engineering:
+        enabled: true
+        include_steps: true
+        include_parts: true
+        max_findings: 12
+        max_recommendations: 12
+    style:
+      primary: "#125B57"
+      accent: "#2E8B57"
+      risk: "#B23A48"
+      muted: "#66737A"
+      background: "#F4F7F6"
+      font_family: DejaVu Sans
+  automation_idea:
+    enabled: true
+    llm: {profile: gpt_5_4, max_completion_tokens: 5000}
+    prompts: {system: system_v1, human: human_v1}
+    structured_output: automation_planning_brief_v1
+    tools: []
+    execution: {max_tool_rounds: 4}
+    inputs:
+      planning_instruction: {enabled: true, required: true, kind: text, source: planning_instruction, max_chars: 6000}
+      assembly_overview: {enabled: true, required: true, kind: json, source: assembly_overview, max_chars: 12000}
+      ffa_report_summary:
+        enabled: true
+        required: true
+        kind: json
+        source: ffa_report
+        fields: [assembly_overview, executive_summary, scorecard, key_findings, recommendations, assumptions_and_unknowns]
+        max_chars: 24000
+      ffa_score_summary:
+        enabled: true
+        required: true
+        kind: json
+        source: ffa_scores
+        fields: [aggregate]
+        max_chars: 4000
+  step_planner_detailed:
+    enabled: true
+    llm: {profile: gpt_5_4, max_completion_tokens: 7000}
+    prompts: {system: system_v1, human: human_v1}
+    structured_output: detailed_step_plan_v1
+    tools: []
+    execution: {max_tool_rounds: 4}
+    fanout: {parallel: true, max_workers: 6}
+    inputs:
+      automation_idea: {enabled: true, required: true, kind: json, source: automation_idea, max_chars: 24000}
+      assembly_step:
+        enabled: true
+        required: true
+        kind: json
+        source: assembly_sequence
+        select: {path: steps, field: step_id, equals: "{step_id}", mode: one}
+      automatable_reasoning:
+        enabled: true
+        required: true
+        kind: json
+        source: ffa_assessment
+        select: {path: steps, field: step.step_id, equals: "{step_id}", mode: one}
+        fields:
+          - ffa_assessment.separation.automatable_reasoning
+          - ffa_assessment.handling.automatable_reasoning
+          - ffa_assessment.positioning.automatable_reasoning
+          - ffa_assessment.joining.automatable_reasoning
+  automation_concept_synthesis:
+    enabled: true
+    llm: {profile: gpt_5_4, max_completion_tokens: 10000}
+    prompts: {system: system_v1, human: human_v1}
+    structured_output: automation_concept_v1
+    tools: []
+    execution: {max_tool_rounds: 4}
+    inputs:
+      automation_idea: {enabled: true, required: true, kind: json, source: automation_idea, max_chars: 24000}
+      assembly_sequence: {enabled: true, required: true, kind: json, source: assembly_sequence, max_chars: 30000}
+      detailed_step_plans: {enabled: true, required: true, kind: json, source: detailed_step_plans, max_chars: 80000}
+      assembly_overview: {enabled: true, required: true, kind: json, source: assembly_overview, max_chars: 12000}
+      ffa_report: {enabled: true, kind: json, source: ffa_report, max_chars: 30000}
+      previous_automation_concept: {enabled: true, kind: json, source: previous_automation_concept, max_chars: 50000}
+      concept_feedback: {enabled: true, kind: text, source: concept_feedback, max_chars: 12000}
+  layout_planner:
+    enabled: true
+    llm: {profile: gpt_5_4, max_completion_tokens: 5000}
+    prompts: {system: system_v1, human: human_v1}
+    structured_output: layout_planner_v1
+    tools: []
+    execution: {max_tool_rounds: 1}
+    inputs:
+      automation_concept: {enabled: true, required: true, kind: json, source: automation_concept, max_chars: 60000}
+      layout_context: {enabled: true, kind: text, source: layout_context, max_chars: 12000}
+  cost_planner:
+    enabled: true
+    catalogue_path: data/catalogs/equipment_prices.csv
+    llm: {profile: gpt_5_4, max_completion_tokens: 5000}
+    prompts: {system: system_v1, human: human_v1}
+    structured_output: cost_planner_matches_v1
+    tools: []
+    execution: {max_tool_rounds: 1}
+    inputs:
+      automation_concept: {enabled: true, required: true, kind: json, source: automation_concept, max_chars: 60000}
+      layout: {enabled: true, required: true, kind: json, source: layout, max_chars: 30000}
+      price_catalogue: {enabled: true, required: true, kind: text, source: price_catalogue_csv, max_chars: 80000}
+      cost_context: {enabled: true, kind: text, source: cost_context, max_chars: 12000}

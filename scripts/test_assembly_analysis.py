@@ -11,17 +11,13 @@ DEFAULT_SESSION_DIR = (
     / "data/stepparser_tests/2026-09-18_190043_317be9cf/003_IPA_Reducer_Case"
 )
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv(WORKSPACE_ROOT / "agent/.env")  # Legacy credential location during migration.
-except ImportError:
-    pass
-
 from assembly_automation.workflows.nodes.assembly_analysis import run_assembly_analysis
 from assembly_automation.workflows.runtime.configuration import load_settings
+from assembly_automation.workflows.runtime.environment import load_project_environment
 
 
 def main(argv=None):
+    load_project_environment(WORKSPACE_ROOT)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "session_dir",

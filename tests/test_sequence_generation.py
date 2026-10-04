@@ -65,7 +65,12 @@ class SequenceGenerationTests(unittest.TestCase):
         return {
             "assembly": {"name": "Fixture", "total_parts": 2, "unique_parts": 1,
                          "geometry": {"size": {"x": 1, "y": 2, "z": 3}}, "hierarchy": []},
-            "assembly_overview": {"analysis": {"assembly_name_guess": "Fixture"}},
+            "assembly_overview": {
+                "assembly_name_guess": "Fixture",
+                "primary_function": "Test function",
+                "assembly_description": "Test assembly",
+                "partslist": ["part001"],
+            },
             "bom_enriched": self.bom,
             "images": root / "images",
         }
@@ -79,8 +84,8 @@ class SequenceGenerationTests(unittest.TestCase):
                 llm_profiles=self.profiles, output_path=output, llm=_FakeLlm(self.sequence))
             saved = json.loads(output.read_text(encoding="utf-8"))
         self.assertEqual(response["status"], "complete")
-        self.assertEqual(saved["execution"]["mode"], "generate")
-        self.assertEqual(saved["sequence"]["steps"][1]["joining_part"], "part_001_002")
+        self.assertEqual(response["run_record"]["execution"]["mode"], "generate")
+        self.assertEqual(saved["steps"][1]["joining_part"], "part_001_002")
 
     def test_revise_requires_initial_sequence_and_summarized_feedback(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -89,7 +94,7 @@ class SequenceGenerationTests(unittest.TestCase):
                 run_sequence_generation(mode="revise", artifacts=artifacts, settings=self.settings,
                                         llm_profiles=self.profiles, context={"user_feedback_summary": "Reverse it."},
                                         llm=_FakeLlm(self.sequence))
-            artifacts["initial_sequence"] = {"sequence": self.sequence}
+            artifacts["initial_sequence"] = self.sequence
             with self.assertRaisesRegex(ValueError, "summarized user feedback"):
                 run_sequence_generation(mode="revise", artifacts=artifacts, settings=self.settings,
                                         llm_profiles=self.profiles, llm=_FakeLlm(self.sequence))
@@ -98,16 +103,16 @@ class SequenceGenerationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             artifacts = self._artifacts(root)
-            artifacts["initial_sequence"] = {"sequence": self.sequence}
+            artifacts["initial_sequence"] = self.sequence
             response = run_sequence_generation(
                 mode="revise", artifacts=artifacts, settings=self.settings,
                 llm_profiles=self.profiles,
                 context={"user_feedback_summary": "Keep the first placement and clarify step two."},
                 llm=_FakeLlm(self.sequence))
-        ids = [item["id"] for item in response["result"]["inputs"]]
+        ids = [item["id"] for item in response["run_record"]["inputs"]]
         self.assertIn("initially_generated_sequence", ids)
         self.assertIn("summarized_user_feedback", ids)
-        self.assertEqual(response["result"]["execution"]["mode"], "revise")
+        self.assertEqual(response["run_record"]["execution"]["mode"], "revise")
 
     def test_validation_rejects_missing_or_repeated_instances(self):
         invalid = {**self.sequence, "steps": [self.sequence["steps"][0]]}

@@ -4,17 +4,18 @@ from pydantic import BaseModel, Field
 
 
 class AssemblyAnalysis(BaseModel):
-    assembly_description: str = Field(
-        description="Concise engineering description grounded in supplied CAD evidence."
+    partslist: list[str] = Field(
+    description="Identifiable parts with likely name, rendered color, function, function within the assembly and quantity. Words over sentences. "
     )
-    partslist: str = Field(
-        description="Bullet list of identifiable parts with likely name, function and rendered color."
+
+    assembly_description: list[str] = Field(
+        description="Concise engineering description of the assembly grounded in supplied CAD evidence. "
     )
-    assembly_name_guess: str = Field(
-        description="One short, suitable name for the assembly."
+    assembly_name_guess: list[str] = Field(
+        description="One short, suitable name for the assembly. Max 3 words."
     )
-    primary_function: str = Field(
-        description="Concise description of the assembly's likely primary function."
+    primary_function: list[str] = Field(
+        description="Most likely primary function of the assembly."
     )
 
 

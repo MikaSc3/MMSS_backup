@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -44,6 +45,14 @@ def instance(identifier, shape):
 
 
 class ConfigurationTests(unittest.TestCase):
+    def test_production_preprocessing_config_matches_stepparser_contract(self):
+        workspace = Path(__file__).resolve().parents[1]
+        config = yaml.safe_load((workspace / "configs/appsettingsv3.yaml").read_text(encoding="utf-8"))
+
+        settings = StepParserSettings.from_mapping(config["nodes"]["step_preprocessing"])
+
+        self.assertTrue(settings.automaticimageselection.enabled)
+
     def test_invalid_settings_fail_before_viewer_creation(self):
         for mapping in ({"typo": True}, {"rendering": {"part_views": ["typo"]}},
                         {"spatial_relations": {"contact_tolerance_mm": 4, "proximity_threshold_mm": 3}},
