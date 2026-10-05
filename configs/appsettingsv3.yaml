@@ -53,16 +53,15 @@ user_agent:
     enabled: true
     llm:
       profile: gpt_5_4
-      max_completion_tokens: 1800
+      max_completion_tokens: 32000
       temperature: 0
     prompts:
       system: system_v1
       human: human_v1
-    structured_output: artifact_change_v1
+    structured_output: artifact_rewrite_v1
   tools:
     - inspect_session
     - ingest_documents
-    - record_context_change
     - analyse_assembly
     - analyse_monoparts
     - change_artifact
@@ -647,15 +646,11 @@ nodes:
     enabled: true
     llm: {profile: gpt_5_4, max_completion_tokens: 10000}
     prompts: {system: system_v1, human: human_v1}
-    structured_output: automation_concept_v1
+    structured_output: automation_equipment_list_v1
     tools: []
     execution: {max_tool_rounds: 4}
     inputs:
-      automation_idea: {enabled: true, required: true, kind: json, source: automation_idea, max_chars: 24000}
-      assembly_sequence: {enabled: true, required: true, kind: json, source: assembly_sequence, max_chars: 30000}
       detailed_step_plans: {enabled: true, required: true, kind: json, source: detailed_step_plans, max_chars: 80000}
-      assembly_overview: {enabled: true, required: true, kind: json, source: assembly_overview, max_chars: 12000}
-      ffa_report: {enabled: true, kind: json, source: ffa_report, max_chars: 30000}
       previous_automation_concept: {enabled: true, kind: json, source: previous_automation_concept, max_chars: 50000}
       concept_feedback: {enabled: true, kind: text, source: concept_feedback, max_chars: 12000}
   layout_planner:

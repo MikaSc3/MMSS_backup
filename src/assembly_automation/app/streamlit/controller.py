@@ -162,8 +162,7 @@ class SessionController:
             return
         try:
             result = self._require_agent().invoke(
-                "Introduce yourself briefly. Explain that you can discuss the assessment now, "
-                "and that a STEP file is needed before analysis can begin. Do not call tools.",
+                "Introduce yourself briefly. Tell the user what you can do and how to get started. Focus on the first STEP upload.",
                 visible_user_message=False, allow_tools=False)
             message = str(result.get("response") or "").strip()
             if not message:

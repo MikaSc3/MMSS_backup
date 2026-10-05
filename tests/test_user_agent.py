@@ -167,16 +167,18 @@ class ArtifactEditorTests(unittest.TestCase):
 
 
 class WorkflowAgentToolTests(unittest.TestCase):
-    def test_semantic_part_change_resolves_alias_and_skips_monopart_rerun(self):
+    def test_whole_bom_change_is_saved_and_skips_monopart_rerun(self):
         class Planner:
-            def plan(self, resolved, change):
+            def rewrite(self, resolved, change):
                 self.resolved, self.change = resolved, change
+                artifact = json.loads(json.dumps(resolved.current))
+                artifact["parts"][0]["part_analysis"]["nature_of_provision_guess"] = [
+                    "Provided face down in a tray."]
                 return {
-                    "changes": {
-                        "nature_of_provision_guess": ["Provided face down in a tray."],
-                        "handling_implications": ["Approach the upward-facing rear surface before reorientation."],
-                    },
-                    "plan": {"edits": [], "summary": "Updated the provision orientation."},
+                    "artifact": artifact,
+                    "rewrite": {"changed_locations": [
+                        "parts[0].part_analysis.nature_of_provision_guess"],
+                        "summary": "Updated the provision orientation."},
                     "execution": {"llm_profile": "test", "token_usage": None,
                                   "elapsed_seconds": 0.01},
                     "input": {"user_change": change},
@@ -193,19 +195,19 @@ class WorkflowAgentToolTests(unittest.TestCase):
             tools.artifact_change_planner = planner
             tools.current_user_message = "The part is provisioned face down."
 
-            result = tools.change_artifact("part001", "The part is provisioned face down.")
+            result = tools.change_artifact("BOM", "part_001 is provisioned face down.")
             updated = json.loads(workflow.paths.enriched_bom.read_text())
             state = json.loads(tools.state_path.read_text())
 
-            self.assertEqual(planner.resolved.entity_id, "part_001")
+            self.assertEqual(planner.resolved.artifact, "bom")
             self.assertEqual(updated["parts"][0]["part_analysis"]["nature_of_provision_guess"],
                              ["Provided face down in a tray."])
             self.assertFalse(state["stale"]["monoparts"])
             self.assertTrue(state["stale"]["sequence"])
             self.assertTrue(Path(result["run_record_path"]).is_file())
-            self.assertEqual(result["target"], "part part_001")
+            self.assertEqual(result["target"], "bom")
 
-    def test_semantic_target_exposes_only_editable_part_fields(self):
+    def test_semantic_target_resolves_the_complete_bom(self):
         with tempfile.TemporaryDirectory() as directory:
             workflow = FakeWorkflow(Path(directory) / "session")
             write(workflow.paths.enriched_bom, {
@@ -214,11 +216,10 @@ class WorkflowAgentToolTests(unittest.TestCase):
                            "part_analysis": dict(PART_ANALYSIS)}],
                 "instances": [{"instance_id": "part_001", "part_id": "part_001"}],
             })
-            resolved = resolve_target(ArtifactEditor(workflow.paths.root), "part:part001")
-            self.assertIn("nature_of_provision_guess", resolved.editable_fields)
-            self.assertNotIn("part_color", resolved.editable_fields)
-            self.assertNotIn("quantity", resolved.editable_fields)
-            self.assertNotIn("geometry", resolved.current)
+            resolved = resolve_target(ArtifactEditor(workflow.paths.root), "BOM")
+            self.assertEqual(resolved.artifact, "bom")
+            self.assertEqual(resolved.current["parts"][0]["part_id"], "part_001")
+            self.assertIn("geometry", resolved.current["parts"][0])
 
     def test_part_context_tools_are_bounded_and_address_parts_by_id(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -396,43 +397,14 @@ class WorkflowAgentToolTests(unittest.TestCase):
             tools = WorkflowAgentTools(workflow=workflow, step_file=step)
 
             tools.analyse_assembly()
-            tools.analyse_monoparts()
+            tools.analyse_monoparts("Use the assembly context provided by the preceding analysis.")
             generated = tools.generate_sequence()
             self.assertEqual(generated["revision_id"], "r001")
             completed = tools.ffa_evaluation()
             self.assertEqual(completed["status"], "complete")
 
-            tools.record_context_change(scope="assembly", raw_user_message="It is a bearing support",
-                                        agent_summary="Assembly is a bearing support.",
-                                        feedback_type="correction")
-            self.assertTrue(tools.inspect_session()["stale"]["assembly"])
             rerun = tools.ffa_evaluation()
             self.assertEqual(rerun["status"], "complete")
-
-    def test_bom_handling_feedback_uses_part_scope(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            step = root / "fixture.step"
-            step.write_text("STEP")
-            workflow = FakeWorkflow(root / "session")
-            tools = WorkflowAgentTools(workflow=workflow, step_file=step)
-
-            result = tools.record_context_change(
-                scope="part",
-                raw_user_message="Circlips will be delivered in bulk",
-                agent_summary="Circlips are supplied in bulk and require bulk-feeding analysis.",
-                feedback_type="correction",
-            )
-
-            self.assertEqual(result["feedback"]["scope"], "part")
-            self.assertTrue(tools.inspect_session()["stale"]["monoparts"])
-
-            with self.assertRaisesRegex(ValueError, "Unknown feedback scope"):
-                tools.record_context_change(
-                    scope="automation_planning_premise",
-                    raw_user_message="Another correction",
-                    agent_summary="Invalid legacy scope.",
-                )
 
     def test_automation_planning_can_use_existing_report_after_ffa_disagreement(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -440,13 +412,10 @@ class WorkflowAgentToolTests(unittest.TestCase):
             step = root / "fixture.step"; step.write_text("STEP")
             workflow = FakeWorkflow(root / "session")
             tools = WorkflowAgentTools(workflow=workflow, step_file=step)
-            tools.analyse_assembly(); tools.analyse_monoparts(); tools.generate_sequence()
+            tools.analyse_assembly()
+            tools.analyse_monoparts("Analyze each part using the current assembly context.")
+            tools.generate_sequence()
             tools.ffa_evaluation()
-            tools.record_context_change(
-                scope="ffa_report", raw_user_message="The ring steps should be equal",
-                agent_summary="Treat both ring steps as equally difficult.",
-                feedback_type="correction")
-            self.assertTrue(tools.inspect_session()["stale"]["final"])
             tools._automation_workflow = FakeAutomationPlanning()
             tools.current_user_message = "Plan both ring steps as manual"
 
@@ -462,7 +431,9 @@ class WorkflowAgentToolTests(unittest.TestCase):
             step = root / "fixture.step"; step.write_text("STEP")
             workflow = FakeWorkflow(root / "session")
             tools = WorkflowAgentTools(workflow=workflow, step_file=step)
-            tools.analyse_assembly(); tools.analyse_monoparts(); tools.generate_sequence()
+            tools.analyse_assembly()
+            tools.analyse_monoparts("Analyze each part using the current assembly context.")
+            tools.generate_sequence()
             result = tools.revise_sequence("Insert it second", "Insert the pin in step two.")
             self.assertEqual(result["revision_id"], "r002")
             call = workflow.calls[-1]
@@ -575,7 +546,7 @@ class UserFacingAgentTests(unittest.TestCase):
                 settings=config["user_agent"], llm_profiles=config["llms"]["profiles"],
                 llm=FakeToolCallingModel())
         self.assertIn("change_artifact", agent.tool_map)
-        self.assertIn("record_context_change", agent.tool_map)
+        self.assertNotIn("record_context_change", agent.tool_map)
         self.assertNotIn("set_user_context", agent.tool_map)
         self.assertIsNotNone(agent.toolbox.artifact_change_planner)
 
@@ -585,7 +556,7 @@ class UserFacingAgentTests(unittest.TestCase):
         self.assertIn("Tool descriptions define their eligibility", prompt)
         self.assertIn("Do not narrate tool selection", prompt)
         self.assertIn("Do not rerun FfA", prompt)
-        self.assertIn("Minor wording corrections use the artifact-editing tools", prompt)
+        self.assertIn("Corrections to an existing artifact use `change_artifact`", prompt)
 
     def test_announcement_is_persisted_and_emitted_before_other_turns(self):
         with tempfile.TemporaryDirectory() as directory:

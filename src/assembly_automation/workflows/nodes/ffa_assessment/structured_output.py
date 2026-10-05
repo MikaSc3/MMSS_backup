@@ -100,53 +100,62 @@ class FixingOfMountedPart(str, Enum):
     NOT_FORESEEABLE = "special development, not foreseeable"
 
 
-class SeparationAssessment(BaseModel):
-    nature_of_provision_reasoning: str = Field(min_length=1, description="Reasoning for the nature of provision assessment. max. 2 bullets.")
+class ReasonedAssessment(BaseModel):
+    """Accept the old scalar reasoning form while emitting the current lists."""
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def legacy_reasoning_becomes_one_bullet(cls, value, info):
+        return [value] if info.field_name.endswith("_reasoning") and isinstance(value, str) else value
+
+
+class SeparationAssessment(ReasonedAssessment):
+    nature_of_provision_reasoning: list[str] = Field(description="Reasoning for the nature of provision assessment. max. 2 bullets.")
     nature_of_provision: NatureOfProvision
-    automatable_reasoning: str = Field(min_length=1, description="Reasoning for the overall automation potential of this step. High, Medium, Low: then one sentence.")
+    automatable_reasoning: list[str] = Field( description="Reasoning for the overall automation potential of this step. High, Medium, Low: then one sentence.")
 
 
 
-class HandlingAssessment(BaseModel):
+class HandlingAssessment(ReasonedAssessment):
 
-    rigidity_reasoning: str = Field(min_length=1, description="Reasoning for the part rigidity assessment. max. 2 bullets.")
+    rigidity_reasoning: list[str] = Field(description="Reasoning for the part rigidity assessment. max. 2 bullets.")
     part_rigidity: PartRigidity
-    gripping_reasoning: str = Field(min_length=1, description="Reasoning for the gripping areas assessment. max. 2 bullets.")
+    gripping_reasoning: list[str] = Field(description="Reasoning for the gripping areas assessment. max. 2 bullets.")
     gripping_areas: GrippingAreas
-    orientation_reasoning: str = Field(min_length=1, description="Reasoning for the orientation features assessment. max. 2 bullets.")
+    orientation_reasoning: list[str] = Field(description="Reasoning for the orientation features assessment. max. 2 bullets.")
     orientation_features: OrientationFeatures
-    surface_reasoning: str = Field(min_length=1, description="Reasoning for the surface sensibility assessment. max. 2 bullets.")
+    surface_reasoning: list[str] = Field(description="Reasoning for the surface sensibility assessment. max. 2 bullets.")
     surface_sensibility: SurfaceSensibility
-    automatable_reasoning: str = Field(min_length=1, description="Reasoning for the overall automation potential of this step. High, Medium, Low: then one sentence.")
+    automatable_reasoning: list[str] = Field(description="Reasoning for the overall automation potential of this step. High, Medium, Low: then one sentence.")
 
 
 
-class PositioningAssessment(BaseModel):
+class PositioningAssessment(ReasonedAssessment):
 
-    accuracy_reasoning: str = Field(min_length=1, description="Reasoning for the accuracy of target position assessment. max. 2 bullets.")
+    accuracy_reasoning: list[str] = Field(description="Reasoning for the accuracy of target position assessment. max. 2 bullets.")
     accuracy_of_target_position: AccuracyOfTargetPosition
-    positioning_aids_reasoning: str = Field(min_length=1, description="Reasoning for the positioning aids assessment. max. 2 bullets.")
+    positioning_aids_reasoning: list[str] = Field(description="Reasoning for the positioning aids assessment. max. 2 bullets.")
     positioning_aids: PositioningAids
-    orientation_reasoning: str = Field(min_length=1, description="Reasoning for the additional orientation by rotation assessment. max. 2 bullets.")
+    orientation_reasoning: list[str] = Field(description="Reasoning for the additional orientation by rotation assessment. max. 2 bullets.")
     additional_orientation_by_rotation: AdditionalOrientation    
-    tolerances_reasoning: str = Field(min_length=1, description="Reasoning for the positioning tolerances assessment. max. 2 bullets.")
+    tolerances_reasoning: list[str] = Field(description="Reasoning for the positioning tolerances assessment. max. 2 bullets.")
     positioning_tolerances: PositioningTolerances
-    motion_reasoning: str = Field(min_length=1, description="Reasoning for the positioning motion assessment. max. 2 bullets.")
+    motion_reasoning: list[str] = Field(description="Reasoning for the positioning motion assessment. max. 2 bullets.")
     positioning_motion: PositioningMotion
-    accessibility_reasoning: str = Field(min_length=1, description="Reasoning for the accessibility to joining position assessment. max. 2 bullets.")
+    accessibility_reasoning: list[str] = Field(description="Reasoning for the accessibility to joining position assessment. max. 2 bullets.")
     accessibility_to_joining_position: Accessibility    
-    stability_reasoning: str = Field(min_length=1, description="Reasoning for the stability in positioned state assessment. max. 2 bullets.")
+    stability_reasoning: list[str] = Field(description="Reasoning for the stability in positioned state assessment. max. 2 bullets.")
     stability_in_positioned_state: Stability
-    automatable_reasoning: str = Field(min_length=1, description="Reasoning for the overall automation potential of this step. High, Medium, Low: then one sentence.")
+    automatable_reasoning: list[str] = Field(description="Reasoning for the overall automation potential of this step. High, Medium, Low: then one sentence.")
 
 
 
-class JoiningAssessment(BaseModel):
-    feeding_reasoning: str = Field(min_length=1, description="Reasoning for the feeding of joining element assessment. max. 2 bullets.")
+class JoiningAssessment(ReasonedAssessment):
+    feeding_reasoning: list[str] = Field(description="Reasoning for the feeding of joining element assessment. max. 2 bullets.")
     feeding_of_joining_element: FeedingOfJoiningElement
-    fixing_reasoning: str = Field(min_length=1, description="Reasoning for the fixing of mounted part assessment. max. 2 bullets.")
+    fixing_reasoning: list[str] = Field(description="Reasoning for the fixing of mounted part assessment. max. 2 bullets.")
     fixing_of_mounted_part: FixingOfMountedPart
-    automatable_reasoning: str = Field(min_length=1, description="Reasoning for the overall automation potential of this step. High, Medium, Low: then one sentence.")
+    automatable_reasoning: list[str] = Field(description="Reasoning for the overall automation potential of this step. High, Medium, Low: then one sentence.")
 
 
 
@@ -157,7 +166,6 @@ class OverallFFA(BaseModel):
 
 
 class Drawback(BaseModel):
-    drawback_id: str = Field(min_length=1)
     description: str = Field(min_length=1)
     improvement_measure: str = Field(min_length=1)
 
@@ -180,6 +188,16 @@ class FFAAssessment(BaseModel):
     design_drawbacks_base_part: list[PartDrawbacks]
     design_drawbacks_joining_parts: list[PartDrawbacks] = Field(min_length=1)
     design_drawbacks_assembly: list[AssemblyDrawbacks] = Field(min_length=1)
+
+    remarkforadmin: list[str] = Field(default_factory=list,
+    description=(
+        "Up to 10 short bullet statements for internal use only. "
+        "Include any relevant information that may you help future analysis."
+        "Use an empty list when none are relevant."
+        "Are there problems in the prompt, provided data or anything?"
+        "how can we help you improve the prompt or the data to get better results?"
+        )  
+    )
 
     @field_validator("overall_ffa")
     @classmethod

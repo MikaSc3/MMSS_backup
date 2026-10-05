@@ -17,17 +17,14 @@ class Phase:
 PHASES = (
     Phase("setup", "Session setup", ()),
     Phase("preprocessing", "STEP preprocessing", ("step_preprocessing",)),
-    Phase("geometry", "Geometry extraction from STEP", ()),
-    Phase("step_rendering", "STEP rendering", ()),
     Phase("assembly", "Assembly review", ("assembly_analysis",)),
     Phase("parts", "Part analysis", ("monopart_analysis", "bom_merge")),
     Phase("sequence", "Sequence generation", ("sequence_generation",)),
     Phase("sequence_review", "Sequence review", ()),
-    Phase("rendering", "Sequence rendering", ("sequence_rendering",)),
-    Phase("interaction", "Interaction analysis", ("interaction_analysis",)),
-    Phase("ffa", "FfA assessment", ("ffa_assessment",)),
-    Phase("scoring", "Scoring", ("ffa_scoring",)),
-    Phase("report", "Report generation", ("report_synthesis", "report_rendering")),
+    Phase("feasibility", "Feasibility analysis", (
+        "sequence_rendering", "interaction_analysis", "ffa_assessment",
+        "ffa_scoring", "report_synthesis", "report_rendering",
+    )),
     Phase("automation_idea", "Automation idea", ()),
     Phase("detailed_planning", "Detailed planning", ()),
     Phase("concept", "Automation concept", ()),
@@ -48,6 +45,9 @@ def _stage_complete(stages: dict[str, Any], prefixes: tuple[str, ...]) -> bool:
 
 def phase_states(snapshot: Any) -> dict[str, str]:
     states = {phase.phase_id: "queued" for phase in PHASES}
+    # Keep the legacy report state available to callers while the rendered
+    # track presents all feasibility work as one stable product phase.
+    states["report"] = "queued"
     if snapshot is None:
         return states
     if snapshot.workflow_status == "draft":
@@ -58,6 +58,8 @@ def phase_states(snapshot: Any) -> dict[str, str]:
     for phase in PHASES:
         if phase.stage_prefixes and _stage_complete(stages, phase.stage_prefixes):
             states[phase.phase_id] = "complete"
+    if _stage_complete(stages, ("report_synthesis", "report_rendering")):
+        states["report"] = "complete"
     if snapshot.active_revision:
         states["sequence"] = "complete"
         states["sequence_review"] = ("complete" if snapshot.approved_revision
@@ -65,7 +67,7 @@ def phase_states(snapshot: Any) -> dict[str, str]:
     waiting = {
         "awaiting_upload": "setup", "preparing": "preprocessing", "awaiting_assembly_review": "assembly",
         "awaiting_bom_review": "parts", "awaiting_sequence_generation": "sequence",
-        "awaiting_sequence_approval": "sequence_review", "sequence_approved": "rendering",
+        "awaiting_sequence_approval": "sequence_review",         "sequence_approved": "feasibility",
         "planning_idea": "automation_idea",
         "awaiting_idea_review": "automation_idea",
         "planning_steps": "detailed_planning",
@@ -94,13 +96,7 @@ def _latest_activity(events: list[dict[str, Any]]) -> tuple[str | None, dict[str
         if kind.startswith(("workflow.stage", "session.setup", "tool.")):
             if (kind == "workflow.stage.progress"
                     and event.get("stage") == "step_preprocessing"):
-                labels = {
-                    "geometry": "Geometry extraction from STEP",
-                    "rendering": "STEP rendering",
-                }
-                item = labels.get(str(event.get("item") or ""))
-                if item:
-                    return item, event
+                return "STEP preprocessing", event
             raw = event.get("operation") or event.get("stage") or event.get("tool")
             if raw:
                 return str(raw).replace("_", " ").replace(":", " · "), event
@@ -124,10 +120,10 @@ def _event_phase(event: dict[str, Any] | None) -> str | None:
         }.get(str(event.get("tool") or ""))
     stage = str(event.get("stage") or "").split(":", 1)[0]
     if stage == "step_preprocessing":
-        return {
-            "geometry": "geometry",
-            "rendering": "step_rendering",
-        }.get(str(event.get("item") or ""), "preprocessing")
+        return "preprocessing"
+    if stage in {"sequence_rendering", "interaction_analysis", "ffa_assessment",
+                 "ffa_scoring", "report_synthesis", "report_rendering"}:
+        return "feasibility"
     for phase in PHASES:
         if stage in phase.stage_prefixes:
             return phase.phase_id
@@ -136,17 +132,7 @@ def _event_phase(event: dict[str, Any] | None) -> str | None:
 
 def render_progress(st: Any, snapshot: Any, events: list[dict[str, Any]], *, busy: bool) -> None:
     states = phase_states(snapshot)
-    completed = sum(value == "complete" for value in states.values())
-    activity, event = _latest_activity(events)
-    draft = snapshot is not None and snapshot.workflow_status == "draft"
-    if busy and (snapshot is None or draft):
-        current = "Preparing assessment session"
-    elif draft:
-        current = "Waiting for STEP upload"
-    else:
-        current = activity or next(
-            (phase.label for phase in PHASES if states[phase.phase_id] == "waiting"),
-            "Ready to upload a STEP assembly" if snapshot is None else "Ready")
+    _activity, event = _latest_activity(events)
     failed = bool(events and events[-1].get("type") == "agent.turn.failed")
     active = _event_phase(event) if busy else None
     if active is None:
@@ -160,14 +146,17 @@ def render_progress(st: Any, snapshot: Any, events: list[dict[str, Any]], *, bus
     if active is not None:
         visible_until = max(visible_until, next(
             index for index, phase in enumerate(PHASES) if phase.phase_id == active))
+    # Future stages used to be rendered as empty, unlabeled dots. Limit the
+    # track to the known path so every visible node has a meaningful label.
+    visible_phases = PHASES[:visible_until + 1]
     nodes = []
-    for index, phase in enumerate(PHASES, 1):
+    for index, phase in enumerate(visible_phases, 1):
         state = states[phase.phase_id]
         if phase.phase_id == active:
             state = "failed" if failed else "active"
         connector = " complete" if states[phase.phase_id] == "complete" else ""
         marker = "✓" if state == "complete" else ""
-        label = escape(phase.label) if index - 1 <= visible_until else ""
+        label = escape(phase.label)
         nodes.append(
             f'<div class="workflow-phase {state}">'
             f'<div class="workflow-node">{marker}</div>'
@@ -181,9 +170,8 @@ def render_progress(st: Any, snapshot: Any, events: list[dict[str, Any]], *, bus
             '<div class="workflow-item-progress">'
             f'<span style="width:{ratio:.1f}%"></span></div>'
             f'<div class="workflow-item-count">{done} / {total}</div>')
-    head = f'<div class="workflow-progress-head"><span>{escape(current)}</span></div>' if current else ""
     st.markdown(
         '<div class="workflow-progress">'
-        f'{head}<div class="workflow-track">{"".join(nodes)}</div>{detail}</div>',
+        f'<div class="workflow-track">{"".join(nodes)}</div>{detail}</div>',
         unsafe_allow_html=True,
     )

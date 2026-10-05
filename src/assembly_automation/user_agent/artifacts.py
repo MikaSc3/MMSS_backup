@@ -10,10 +10,19 @@ import shutil
 from typing import Any, Mapping
 
 from assembly_automation.workflows.definitions.app_v3 import WorkflowPaths
-from assembly_automation.workflows.nodes.assembly_analysis.structured_output import AssemblyAnalysis
+from assembly_automation.workflows.nodes.assembly_analysis.structured_output import (
+    AssemblyAnalysis, AssemblyAnalysisLEGACY)
 from assembly_automation.workflows.nodes.monopart_analysis.structured_output import SinglePartAnalysis
 from assembly_automation.workflows.nodes.sequence_generation.structured_output import AssemblySequence
 from assembly_automation.workflows.nodes.sequence_generation.validation import validate_sequence
+from assembly_automation.workflows.nodes.automation_idea.structured_output import (
+    AutomationPlanningBrief, AutomationPlanningBrief_LEGACY)
+from assembly_automation.workflows.nodes.automation_concept_synthesis.structured_output import (
+    AutomationEquipmentList)
+from assembly_automation.workflows.nodes.ffa_assessment.structured_output import FFAAssessment
+from assembly_automation.workflows.nodes.interaction_analysis.structured_output import InteractionAnalysis
+from assembly_automation.workflows.nodes.layout_planner.structured_output import EquipmentLayout
+from assembly_automation.workflows.nodes.step_planner_detailed.structured_output import DetailedStepPlan
 
 from .storage import atomic_write_json
 
@@ -59,7 +68,11 @@ def validate_bom(document: Mapping[str, Any]) -> None:
 
 
 class ArtifactEditor:
-    EDITABLE = {"assembly_overview", "bom", "sequence"}
+    EDITABLE = {
+        "assembly_overview", "bom", "sequence", "interaction_analysis",
+        "ffa_assessment", "ffa_scores", "report", "automation_idea",
+        "detailed_step_plans", "automation_concept", "layout", "cost_estimate",
+    }
 
     def __init__(self, session_root: str | Path):
         self.paths = WorkflowPaths(Path(session_root).resolve())
@@ -82,6 +95,36 @@ class ArtifactEditor:
             if not revision_id:
                 raise ValueError("No active report revision")
             return self.paths.reports(revision_id) / "report.json"
+        if artifact == "interaction_analysis":
+            revision_id = revision_id or self._active_revision()
+            if not revision_id:
+                raise ValueError("No active interaction-analysis revision")
+            return (self.paths.revision(revision_id) / "interaction_analysis" /
+                    "interaction_analysis.json")
+        if artifact in {"ffa_assessment", "ffa_scores"}:
+            revision_id = revision_id or self._active_revision()
+            if not revision_id:
+                raise ValueError(f"No active {artifact} revision")
+            filename = "ffa_assessment.json" if artifact == "ffa_assessment" else "ffa_scores.json"
+            return self.paths.ffa(revision_id) / filename
+        planning = {
+            "automation_idea": ("idea", "active_idea_revision", "planning_brief.json"),
+            "detailed_step_plans": ("detailed_plan", "active_concept_revision",
+                                    "detailed_step_plans.json"),
+            "automation_concept": ("concept", "active_concept_revision", "concept.json"),
+            "layout": ("layout", "active_layout_revision", "layout.json"),
+            "cost_estimate": ("cost", "active_cost_revision", "cost_estimate.json"),
+        }
+        if artifact in planning:
+            category, active_key, filename = planning[artifact]
+            if revision_id is None:
+                manifest_path = self.paths.planning_root / "planning_manifest.json"
+                manifest = _read(manifest_path) if manifest_path.is_file() else {}
+                value = manifest.get(active_key)
+                revision_id = value if isinstance(value, str) and value else None
+            if not revision_id:
+                raise ValueError(f"No active {artifact} revision")
+            return self.paths.planning(category) / revision_id / filename
         raise ValueError(f"Unknown artifact {artifact!r}")
 
     def _active_revision(self) -> str | None:
@@ -118,6 +161,50 @@ class ArtifactEditor:
                {"artifact": artifact, "active_path": str(path),
                 "backup_path": str(backup), "reason": reason.strip(), "patch": patch})
         return {"artifact": artifact, "path": str(path), "backup": str(backup)}
+
+    def replace(self, artifact: str, document: Mapping[str, Any], *, expected_sha256: str,
+                reason: str, revision_id: str | None = None) -> dict[str, Any]:
+        """Atomically replace one complete artifact after contract validation."""
+        if artifact not in self.EDITABLE:
+            raise ValueError(f"Artifact is read-only: {artifact}")
+        if not reason.strip():
+            raise ValueError("Artifact rewrites require a reason")
+        path = self.resolve(artifact, revision_id=revision_id)
+        actual_hash = self.content_hash(path)
+        if actual_hash != expected_sha256:
+            raise RuntimeError("Artifact changed while it was being rewritten; retry the change")
+        before = _read(path)
+        after = dict(document)
+        if set(after) != set(before):
+            missing = sorted(set(before) - set(after))
+            added = sorted(set(after) - set(before))
+            raise ValueError(
+                f"Artifact rewrite changed root schema keys; missing={missing}, added={added}")
+        if after == before:
+            raise ValueError("Artifact rewrite did not change the artifact")
+        self._validate(artifact, after)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        backup = self.history / artifact / f"{stamp}_{path.name}"
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, backup)
+        _write(path, after)
+        if artifact == "bom":
+            for part in after.get("parts", []):
+                if not isinstance(part, Mapping) or not isinstance(part.get("part_id"), str):
+                    continue
+                analysis = part.get("part_analysis")
+                if isinstance(analysis, Mapping):
+                    _write(path.parent / "parts" / f"{part['part_id']}.json", analysis)
+        _write(backup.with_suffix(".audit.json"), {
+            "artifact": artifact,
+            "active_path": str(path),
+            "backup_path": str(backup),
+            "reason": reason.strip(),
+            "expected_sha256": expected_sha256,
+            "mode": "complete_artifact_rewrite",
+        })
+        return {"artifact": artifact, "path": str(path), "backup": str(backup),
+                "sha256": self.content_hash(path)}
 
     @staticmethod
     def content_hash(path: Path) -> str:
@@ -176,8 +263,8 @@ class ArtifactEditor:
     def field_target(artifact: str, document: dict[str, Any],
                      entity_id: str) -> tuple[dict[str, Any], set[str]]:
         if artifact == "assembly_overview":
-            return document, {"assembly_description", "partslist", "assembly_name_guess",
-                              "primary_function"}
+            return document, {"assembly_description", "assembly_name_guess",
+                              "primary_function", "uncertainties"}
         if artifact == "bom":
             matches = [part for part in document.get("parts", [])
                        if isinstance(part, dict) and part.get("part_id") == entity_id]
@@ -190,7 +277,8 @@ class ArtifactEditor:
                             "material_and_mechanical_behavior", "bulk_behavior",
                             "magazine_behavior", "nature_of_provision_guess",
                             "geometric_characteristics", "gripping_analysis",
-                            "handling_implications", "intrinsic_summary"}
+                            "handling_implications", "orientation_analysis",
+                            "intrinsic_summary", "assumptions"}
         if artifact == "sequence":
             if entity_id.startswith("step:"):
                 step_id = int(entity_id.split(":", 1)[1])
@@ -199,13 +287,26 @@ class ArtifactEditor:
                 if len(matches) != 1:
                     raise ValueError(f"Expected one sequence step {step_id}, found {len(matches)}")
                 return matches[0], {"step_description", "belongs_to", "joining_process"}
-            return document, {"assembly_name", "assembly_description", "sequence_rationale",
-                              "sequence_notation"}
+            return document, {"assembly_description", "sequence_rationale", "sequence_notation",
+                              "assumptions"}
         raise ValueError(f"Artifact does not support field editing: {artifact}")
 
     def _validate(self, artifact: str, document: Mapping[str, Any]) -> None:
         if artifact == "assembly_overview":
-            AssemblyAnalysis.model_validate(document)
+            try:
+                AssemblyAnalysis.model_validate(document)
+            except Exception as current_error:
+                # Existing sessions retain the original compact parts list.
+                # Preserve their editable lifecycle without weakening the new
+                # node schema used for all newly generated artifacts.
+                try:
+                    legacy_document = dict(document)
+                    for field in ("assembly_description", "assembly_name_guess"):
+                        if isinstance(legacy_document.get(field), str):
+                            legacy_document[field] = [legacy_document[field]]
+                    AssemblyAnalysisLEGACY.model_validate(legacy_document)
+                except Exception:
+                    raise current_error
         elif artifact == "bom":
             validate_bom(document)
             for part in document.get("parts", []):
@@ -215,3 +316,43 @@ class ArtifactEditor:
         elif artifact == "sequence":
             AssemblySequence.model_validate(document)
             validate_sequence(document, _read(self.paths.enriched_bom))
+        elif artifact == "interaction_analysis":
+            steps = document.get("steps")
+            if not isinstance(steps, list) or not steps:
+                raise ValueError("Interaction analysis requires a nonempty steps list")
+            for item in steps:
+                if not isinstance(item, Mapping):
+                    raise ValueError("Every interaction-analysis step must be an object")
+                InteractionAnalysis.model_validate(item.get("interaction_analysis"))
+        elif artifact == "ffa_assessment":
+            steps = document.get("steps")
+            if not isinstance(steps, list) or not steps:
+                raise ValueError("FfA assessment requires a nonempty steps list")
+            for item in steps:
+                if not isinstance(item, Mapping):
+                    raise ValueError("Every FfA-assessment step must be an object")
+                FFAAssessment.model_validate(item.get("ffa_assessment"))
+        elif artifact == "automation_idea":
+            try:
+                AutomationPlanningBrief.model_validate(document)
+            except Exception as current_error:
+                try:
+                    AutomationPlanningBrief_LEGACY.model_validate(document)
+                except Exception:
+                    raise current_error
+        elif artifact == "detailed_step_plans":
+            steps = document.get("steps")
+            if not isinstance(steps, list) or not steps:
+                raise ValueError("Detailed step plans require a nonempty steps list")
+            for item in steps:
+                DetailedStepPlan.model_validate(item)
+        elif artifact == "automation_concept":
+            concept = AutomationEquipmentList.model_validate(document)
+            names = [item.name for item in concept.equipment]
+            if len(set(names)) != len(names):
+                raise ValueError("Automation-concept equipment names must be unique")
+        elif artifact == "layout":
+            EquipmentLayout.model_validate(document)
+        elif artifact in {"ffa_scores", "report", "cost_estimate"}:
+            if not document:
+                raise ValueError(f"{artifact} must contain a nonempty JSON object")

@@ -1,21 +1,55 @@
 """One selected detailed automation realization for one assembly step."""
 
-from typing import List, Literal, Optional, Union
-
+from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 
 class AutomationPlannerMeasure(BaseModel):
-    name: Optional[str] = Field(None, description="Short name max 4 words that describes the measure")
-    beschreibung: str = Field(..., description="Concise description of what risk is adressed and the technical, organizational, or manual measure.")
-    verantwortlich: str = Field(..., description="Responsible role or department for implementing this measure. (Worker, Fixture design, Sensor, Robot, ...)")
+    name: str = Field(
+        description="Short measure name, maximum 4 words."
+    )
+
+    beschreibung: str = Field(
+        description=(
+            "One short action addressing a consequential unresolved condition. "
+            "Do not repeat normal operations or equipment specifications."
+        )
+    )
+
+    verantwortlich: str = Field(
+        description=(
+            "Implementation owner, such as Mechanical design, "
+            "Controls engineering, Process engineering, or Production."
+        )
+    )
 
 
 class AutomationPlannerEquipment(BaseModel):
-    name: str = Field(..., description="Concrete equipment name, as specific as possible. (6DOF-Robot, Linear Axis, Worker, Fixture, Scara, Gripper-partX, an other standard or custom equipment)")
-    function: str = Field(..., description="Main task of the equipment in the process. Position, Hold, Align, Rotate, Feed, Inspect, Transport, e.g. Handling part 001 main housing from tray into fixture only use where task is not self explanatory from the name of the equipment. e.g. gripperpart001 is clear")
-    step_id: int = Field(..., ge=1, description="Assembly step number in which this equipment is required.")
-    specimen: str = Field(..., description="If applicable, specify technical specimen like special sensors, geometry or whatever based on the ablaufbeschreibung. e.g. 2 sensors for positioning of part 001 in fixture")
+    name: str = Field(
+        description=(
+            "Concrete equipment type that would be required for this step. "
+            "Reuse supplied names where applicable. No supplier model guesses."
+        )
+    )
+
+    function: str = Field(
+        description="How will the equipment be used in this step? One short action-led description."
+    )
+
+    step_id: int = Field(
+        ge=1,
+        description="Must equal montageschritt_nr."
+    )
+
+    specimen: list[str] = Field(
+        max_length=2,
+        description=(
+            "Up to two short technical bullets: contact geometry, tooling, "
+            "motion, or sensing features decisive for this step. "
+            "No unsupported numerical specifications. "
+            "Empty when no additional characteristics are needed."
+        )
+    )
 
 
 class AutomationPlannerSubprozess(BaseModel):
@@ -24,36 +58,141 @@ class AutomationPlannerSubprozess(BaseModel):
         "automatisiert",
         "manuell_mit_technischer_unterstuetzung",
         "nicht_erforderlich",
-    ] = Field(..., description="Execution mode selected for this subprocess.")
-    loesung: str = Field(..., description="Bullet points describing the technical realization of this subprocess. If manual, describe the human action. If automated, describe the technical solution.")
+    ] = Field(
+        description="Selected execution mode for this subprocess."
+    )
+
+    loesung: str = Field(
+        description=(
+            "One short action-led realization, normally 6–16 words. "
+            "Describe the action and target; keep equipment details elsewhere. "
+            "For nicht_erforderlich, state the reason briefly."
+        )
+    )
+
+    equipment_names: list[str] = Field(
+        description=(
+            "Exact names of equipment entries used by this subprocess. "
+            "Empty when none are used."
+        )
+    )
 
 
 class AutomationPlannerSubprozesse(BaseModel):
-    vereinzelung: AutomationPlannerSubprozess = Field(..., description="Separation/provisioning subprocess concept.")
-    handhabung: AutomationPlannerSubprozess = Field(..., description="Handling subprocess concept.")
-    positionierung: AutomationPlannerSubprozess = Field(..., description="Positioning subprocess concept.")
-    fuegen: AutomationPlannerSubprozess = Field(..., description="Joining/fixing subprocess concept.")
-    pruefen: Optional[AutomationPlannerSubprozess] = Field(None, description="Optional inspection or verification subprocess. Only include if uncertainty, quality relevance, or technical risk makes an inspection necessary.")
-    uebergeben: AutomationPlannerSubprozess = Field(..., description="Handover to the next state, station, or operator.")
+    vereinzelung: AutomationPlannerSubprozess = Field(
+        description="Separation and individual presentation of the joining instances."
+    )
+    handhabung: AutomationPlannerSubprozess = Field(
+        description="Acquisition, movement, and orientation of the joining instances."
+    )
+    positionierung: AutomationPlannerSubprozess = Field(
+        description="Location and support of base and joining instances for joining."
+    )
+    fuegen: AutomationPlannerSubprozess = Field(
+        description="Physical assembly operation that establishes the intended connection."
+    )
+
+    pruefen: AutomationPlannerSubprozess | None = Field(
+        default=None,
+        description=(
+            "Include only for a specific necessary verification. Otherwise null."
+        )
+    )
+
+    uebergeben: AutomationPlannerSubprozess = Field(
+        description="Release, retention, or handover of the resulting assembly state."
+    )
 
 
 class DetailedStepPlan(BaseModel):
-    montageschritt_nr: int = Field(..., description="Assembly step number this result belongs to.")
-    montageschritt_beschreibung: str = Field(..., description="Short assembly-step description.")
-    basisteil: Optional[str] = Field(None, description="Base part id or name for this step, if present.")
-    fuegeteil: Union[str, List[str]] = Field(..., description="Joining part id, name, or list of joining parts for this step.")
-    bestaetigte_bereitstellungsart: str = Field(..., description="Provisioning mode used as planning assumption.")
-    strategie: Literal["manuell", "halbautomatisiert", "vollautomatisiert"] = Field(..., description="Automation strategy selected for this assembly step based on the global automation idea.")
-    subprozesse: AutomationPlannerSubprozesse = Field(..., description="One selected execution concept for the required subprocesses, guided by the global automation idea.")
-    massnahmen: List[AutomationPlannerMeasure] = Field(default_factory=list, description="Key measures required to make this step realization robust.")
-    equipment: List[AutomationPlannerEquipment] = Field(default_factory=list, description="Based on the selected subprocess solutions, list the concrete equipment required for this assembly step. Use one entry for each distinct equipment item and keep its step_id equal to montageschritt_nr.")
-    entscheidungsbegruendung: str = Field(..., description="Concise justification showing how the selected realization follows the global automation idea and addresses the corresponding FfA findings.")
+    montageschritt_nr: int = Field(
+        ge=1,
+        description="Current assembly step ID."
+    )
+
+    basisteil: str | None = Field(
+        default=None,
+        description="Exact base instance_id from the supplied assembly step."
+    )
+
+    fuegeteil: str | list[str] = Field(
+        description="Exact joining instance_id values from the supplied step."
+    )
+
+    bereitstellungsart: str = Field(
+        description="Short provisioning mode used for this step."
+    )
+
+    bereitstellungsstatus: Literal[
+        "vorgegeben",
+        "planungsannahme",
+    ] = Field(
+        description="Whether provisioning is supplied or selected as an assumption."
+    )
+
+    strategie: Literal[
+        "manuell",
+        "halbautomatisiert",
+        "vollautomatisiert",
+    ] = Field(
+        description=(
+            "Overall strategy consistent with routine subprocess execution "
+            "and the accepted global concept."
+        )
+    )
+
+    subprozesse: AutomationPlannerSubprozesse = Field(
+        description="Selected realization for every subprocess of this assembly step."
+    )
+
+    equipment: list[AutomationPlannerEquipment] = Field(
+        default_factory=list,
+        description=(
+            "Equipment used in this step, each distinct item listed once. "
+            "Referenced by exact name from subprocesses."
+        )
+    )
+
+    massnahmen: list[AutomationPlannerMeasure] = Field(
+        default_factory=list,
+        max_length=2,
+        description=(
+            "Only consequential unresolved implementation actions. "
+            "Empty when normal operations and selected equipment suffice."
+        )
+    )
 
     @model_validator(mode="after")
-    def equipment_belongs_to_this_step(self):
-        mismatched = [item.step_id for item in self.equipment if item.step_id != self.montageschritt_nr]
-        if mismatched:
-            raise ValueError("Every equipment step_id must equal montageschritt_nr")
+    def validate_equipment(self):
+        if any(
+            item.step_id != self.montageschritt_nr
+            for item in self.equipment
+        ):
+            raise ValueError(
+                "Every equipment step_id must equal montageschritt_nr"
+            )
+
+        names = [item.name for item in self.equipment]
+        if len(names) != len(set(names)):
+            raise ValueError("Equipment names must be unique within this step")
+
+        referenced = set()
+        for subprocess in (
+            self.subprozesse.vereinzelung,
+            self.subprozesse.handhabung,
+            self.subprozesse.positionierung,
+            self.subprozesse.fuegen,
+            self.subprozesse.pruefen,
+            self.subprozesse.uebergeben,
+        ):
+            if subprocess is not None:
+                referenced.update(subprocess.equipment_names)
+
+        if referenced != set(names):
+            raise ValueError(
+                "Equipment entries and subprocess references must match"
+            )
+
         return self
 
 
@@ -65,3 +204,4 @@ def get_schema(schema_id: str) -> type[BaseModel]:
         return SCHEMAS[schema_id]
     except KeyError as exc:
         raise ValueError(f"Unknown detailed-step-planner schema: {schema_id}") from exc
+

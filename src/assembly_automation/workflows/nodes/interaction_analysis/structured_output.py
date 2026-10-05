@@ -2,8 +2,119 @@
 
 from pydantic import BaseModel, Field, field_validator
 
+from pydantic import BaseModel, Field
+
 
 class InteractionAnalysis(BaseModel):
+    geometric_interaction: list[str] = Field(
+        description=(
+            "Up to 5 compact feature-led bullets describing mating geometry "
+            "and engagement order. Format: 'Interface: interaction'. "
+            "Exclude motion instructions and fixation details."
+        )
+    )
+
+    positioning_possibilities: list[str] = Field(
+        description=(
+            "Up to 2 compact bullets identifying useful fixture orientations "
+            "and their support/reference surfaces. Prefer the strongest option; "
+            "add another only when it offers a distinct practical advantage."
+        )
+    )
+
+    accuracy_of_target_position: list[str] = Field(
+        description=(
+            "Up to 2 compact bullets identifying required alignment or final "
+            "position and the consequence of error. Avoid unsupported numerical "
+            "tolerances and vague accuracy ratings."
+        )
+    )
+
+    positioning_aids: list[str] = Field(
+        description=(
+            "Up to 3 compact bullets naming geometric guides, lead-ins, "
+            "centering features, or stops and their effects between the parts."
+            "If its the first step, you can assume the fixture has lead ins and defined stops"
+        )
+    )
+
+    additional_orientation_by_rotation: list[str] = Field(
+        description=(
+            "Up to 2 compact bullets covering angular clocking and "
+            "end-for-end orientation where relevant. Distinguish rotational "
+            "symmetry from functional orientation requirements."
+        )
+    )
+
+    joining_tolerances: list[str] = Field(
+        description=(
+            "Up to 1 compact bullet identifying the supported or working "
+            "fit relationship and its decisive sensitivity between the parts. "
+            "No invented tolerance values or fit classes."
+        )
+    )
+
+    accessibility_to_joining_position: list[str] = Field(
+        description=(
+            "Up to 2 compact bullets identifying the approach corridor "
+            "and decisive obstruction or tool/gripper clearance condition "
+            "at the current sequence state."
+        )
+    )
+
+    joining_motion: list[str] = Field(
+        description=(
+            "Up to 2 compact bullets describing the joining trajectory "
+            "and any required sequential translation, rotation, or deformation. "
+            "Do not repeat interface geometry."
+        )
+    )
+
+    stability_in_positioned_state: list[str] = Field(
+        description=(
+            "Up to 2 compact bullets describing support and remaining "
+            "motion after positioning, before final fixation. "
+            "Do not equate supported with fully retained."
+        )
+    )
+
+    feeding_of_joining_element: list[str] = Field(
+        description=(
+            "Up to 1 compact bullet naming auxiliary process elements "
+            "and their delivery requirement. Exclude joining instances. "
+            "Return an empty list when none are indicated."
+        )
+    )
+
+    fixing_of_mounted_part: list[str] = Field(
+        description=(
+            "Up to 2 compact bullets describing retention established "
+            "in this step and any temporary holding needed until later fixation. "
+            "Exclude general alignment risks and tolerance discussion."
+        )
+    )
+
+    assumptions: list[str] = Field(default_factory=list,
+        description=(
+            "Up to 3 compact bullets recording consequential unverified "
+            "premises or unresolved conditions affecting this operation. "
+            "Name the decisive missing input only when useful. "
+            "Do not repeat generic uncertainty statements."
+        )
+    )
+
+    remarkforadmin: list[str] = Field(default_factory=list,
+        description=(
+            "Up to 10 short bullet statements for internal use only. "
+            "Include any relevant information that may you help future analysis."
+            "Use an empty list when none are relevant."
+            "Are there problems in the prompt, provided data or anything?"
+            "how can we help you improve the prompt or the data to get better results?"
+        )
+    )   
+
+
+class InteractionAnalysis_LEGACY(BaseModel):
     geometric_interaction: list[str] = Field(min_length=1, description="Geometric contacts, approaches and final interfaces between the existing assembly and joining instances. In max. 5 bullets.")
     positioning_possibilities: list[str] = Field(min_length=1, description="Feasible fixture orientations for the existing assembly and their geometric support. In max. 2 bullets.")
     accuracy_of_target_position: list[str] = Field(min_length=1, description="Evidence-based translational and rotational accuracy requirements and consequences of misalignment. In max. 2 bullets.")

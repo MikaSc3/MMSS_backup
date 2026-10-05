@@ -47,12 +47,15 @@ def _result(graph: Any, input_state: ReviewCapabilityState) -> dict[str, Any]:
 
 
 def run_assembly_review_graph(*, workflow: "AssemblyAssessmentWorkflow", step_file: str | Path,
-                              user_context: str = "", force: bool = False) -> dict[str, Any]:
+                              user_context: str = "", force: bool = False,
+                              on_preprocessed: Callable[[], None] | None = None) -> dict[str, Any]:
     """Preprocess and analyse the assembly, then stop for assembly-context review."""
     source = Path(step_file).resolve(strict=True)
 
     def action(state: ReviewCapabilityState) -> dict[str, Any]:
         workflow.preprocess(step_file=source)
+        if on_preprocessed is not None:
+            on_preprocessed()
         return workflow.analyze_assembly(user_context=state.get("user_context", ""), force=force)
 
     return _result(_compile("assembly_review", action), {"step_file": str(source),

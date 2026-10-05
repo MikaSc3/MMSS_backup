@@ -69,18 +69,31 @@ def build_report(context: EngineeringPowerPointContext | str | Path,
 
 def _render_assembly(presentation: Any, context: EngineeringPowerPointContext) -> None:
     slide = _slide(presentation, "Assembly")
-    _title(slide, _display(context.assembly.get("assembly_name_guess"), "Assembly overview"))
-    image = _find_image(context.images_root, "assembly", "iso1")
-    if image:
-        from pptx.util import Inches
-        slide.shapes.add_picture(str(image), Inches(8.55), Inches(1.25), width=Inches(4.2))
-    else:
-        _placeholder(slide, "Assembly iso1 image unavailable")
-    selected = {
-        "primary_function": context.assembly.get("primary_function"),
-        "assembly_description": context.assembly.get("assembly_description"),
-    }
-    _add_json_text(slide, selected, left=0.65, top=1.25, width=7.5, height=5.65)
+    assembly_name = _display(context.assembly.get("assembly_name_guess"), "Assembly")
+    _title(slide, f"{assembly_name} - Overview")
+    _add_image_or_placeholder(slide, _find_image(context.images_root, "assembly", "exploded"),
+                              "Assembly exploded image unavailable",
+                              left=8.65, top=1.15, width=4.0, height=2.953)
+    _add_image_or_placeholder(slide, _find_image(context.images_root, "assembly", "iso1",
+                                                 exclude=("exploded",)),
+                              "Assembly iso1 image unavailable",
+                              left=8.65, top=4.25, width=4.0, height=2.953)
+    _add_card(slide, "Assembly architecture", _lines(context.assembly.get("assembly_description")),
+              left=0.65, top=1.15, width=3.6, height=1.65, accent="green", bullets=False)
+    _add_card(slide, "Primary function", _lines(context.assembly.get("primary_function"), limit=3),
+              left=4.5, top=1.15, width=3.6, height=1.65, accent="blue")
+    interfaces = _interface_lines(context.assembly.get("interfaces"))
+    if interfaces:
+        _add_card(slide, "Key mechanical interfaces", interfaces[:3],
+                  left=0.65, top=3.0, width=3.6, height=3.25, accent="amber")
+    uncertainties = _lines(context.assembly.get("uncertainties"), limit=2)
+    if uncertainties:
+        _add_card(slide, "Review focus", uncertainties,
+                  left=4.5, top=3.0, width=3.6, height=3.25, accent="red")
+
+    components = context.assembly.get("partslist")
+    if isinstance(components, list) and any(isinstance(item, Mapping) for item in components):
+        _component_slide(presentation, context, components)
 
 
 def _render_part(presentation: Any, context: EngineeringPowerPointContext,
@@ -89,39 +102,167 @@ def _render_part(presentation: Any, context: EngineeringPowerPointContext,
     analysis = part.get("part_analysis") if isinstance(part.get("part_analysis"), Mapping) else {}
     name = _display(analysis.get("part_name_guess") or part.get("name"), "Unnamed part")
     _title(slide, f"{name} · {part.get('part_id', 'unknown ID')}")
-    image = _find_image(context.images_root, str(part.get("part_id", "")), "iso1")
-    if image:
-        from pptx.util import Inches
-        slide.shapes.add_picture(str(image), Inches(8.55), Inches(1.25), width=Inches(4.2))
-    else:
-        _placeholder(slide, "Part iso1 image unavailable")
-    selected = {
-        "part_identification": analysis.get("part_identification"),
-        "intrinsic_summary": analysis.get("intrinsic_summary"),
-    }
-    _add_json_text(slide, selected, left=0.65, top=1.25, width=7.5, height=5.65)
+    part_id = str(part.get("part_id", ""))
+    _add_image_or_placeholder(slide, _find_image(context.images_root, part_id, "iso1"),
+                              "Part iso1 image unavailable",
+                              left=8.65, top=1.15, width=4.0, height=2.95)
+    _add_image_or_placeholder(slide, _find_image(context.images_root, part_id, "highlighted"),
+                              "Part highlighted image unavailable",
+                              left=8.65, top=4.15, width=4.0, height=2.95)
+    _add_card(slide, "Role in the assembly", _lines(analysis.get("part_identification")),
+              left=.65, top=1.15, width=3.6, height=2.025, accent="green", bullets=False)
+    _add_card(slide, "Engineering readout", _lines(analysis.get("intrinsic_summary"), limit=3),
+              left=4.5, top=1.15, width=3.6, height=2.025, accent="blue")
+    _add_card(slide, "Decisive geometry", _lines(analysis.get("geometric_characteristics"), limit=4),
+              left=.65, top=3.4, width=3.6, height=2.9625, accent="green")
+    _add_card(slide, "Handling and gripping",
+              _lines(analysis.get("handling_implications"), limit=2)
+              + _lines(analysis.get("gripping_analysis"), limit=2),
+              left=4.5, top=3.4, width=3.6, height=2.9625, accent="blue")
 
 
-def _component_slide(presentation: Any, bom: Mapping[str, Any]) -> None:
+def _component_slide(presentation: Any, context: EngineeringPowerPointContext,
+                     components: Sequence[Mapping[str, Any]]) -> None:
     slide = _slide(presentation, "Components")
-    _title(slide, "Component overview")
-    parts = _parts(bom, None)
+    assembly_name = _display(context.assembly.get("assembly_name_guess"), "Assembly")
+    _title(slide, f"{assembly_name} - Bill of Material")
     from pptx.util import Inches, Pt
-    table = slide.shapes.add_table(max(1, len(parts) + 1), 4, Inches(0.65), Inches(1.35),
-                                   Inches(12.0), Inches(5.2)).table
-    for index, header in enumerate(("Part ID", "Name", "Quantity", "Source definition")):
+    table_left, table_top = .65, 1.35
+    table = slide.shapes.add_table(max(1, len(components) + 1), 5,
+                                   Inches(table_left), Inches(table_top),
+                                   Inches(12.0), Inches(5.15)).table
+    widths = (1.05, 2.05, 2.0, .75, 6.15)
+    for column, width in enumerate(widths):
+        table.columns[column].width = Inches(width)
+    for index, header in enumerate(("ISO", "Instance IDs", "Component", "Qty.", "Assembly role")):
         _cell(table.cell(0, index), header, bold=True)
-    for row, part in enumerate(parts, 1):
-        analysis = part.get("part_analysis") if isinstance(part.get("part_analysis"), Mapping) else {}
-        values = (part.get("part_id"), analysis.get("part_name_guess") or part.get("name"),
-                  part.get("quantity"), part.get("source_definition"))
+    table.rows[0].height = Inches(.42)
+    for row, component in enumerate(components, 1):
+        instance_ids = component.get("instance_ids")
+        values = ("",
+                  ", ".join(str(item) for item in instance_ids) if isinstance(instance_ids, list) else "—",
+                  component.get("name"), len(instance_ids) if isinstance(instance_ids, list) else "—",
+                  " ".join(_lines(component.get("assembly_role"), limit=2)))
         for column, value in enumerate(values):
-            _cell(table.cell(row, column), value, bold=False)
+            if column == 0:
+                table.cell(row, column).text = ""
+            else:
+                _cell(table.cell(row, column), value, bold=False)
+        table.rows[row].height = Inches(.7)
+        identifier = str((instance_ids or [""])[0]) if isinstance(instance_ids, list) else ""
+        image = _find_image(context.images_root, identifier or str(component.get("name", "")), "iso1")
+        if image:
+            slide.shapes.add_picture(str(image), Inches(table_left + .17),
+                                     Inches(table_top + .42 + (row - 1) * .7 + .06),
+                                     height=Inches(.58))
+    _style_table(table)
+
+
+def _lines(value: Any, *, limit: int | None = None) -> list[str]:
+    """Normalize concise schema fields without exposing nested JSON to readers."""
+    if value is None:
+        return []
+    values = value if isinstance(value, list) else [value]
+    lines = [_strip_list_marker(str(item).strip()) for item in values
+             if isinstance(item, (str, int, float)) and str(item).strip()]
+    return lines[:limit] if limit is not None else lines
+
+
+def _interface_lines(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    lines: list[str] = []
+    for item in value:
+        if isinstance(item, Mapping):
+            lines.extend(_lines(item.get("statements"), limit=2))
+    return lines
+
+
+def _add_card(slide: Any, title: str, lines: Sequence[str], *, left: float, top: float,
+              width: float, height: float, accent: str, bullets: bool = True) -> None:
+    """Add a restrained editable engineering-information card."""
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.util import Inches, Pt
+
+    palette = {
+        "green": RGBColor(24, 75, 68),
+        "blue": RGBColor(53, 105, 155),
+        "amber": RGBColor(190, 126, 30),
+        "red": RGBColor(170, 72, 60),
+    }
+    shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top),
+                                   Inches(width), Inches(height))
+    shape.fill.solid()
+    shape.fill.fore_color.rgb = RGBColor(255, 255, 255)
+    shape.line.color.rgb = RGBColor(220, 227, 225)
+    shape.line.width = Pt(.75)
+    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(left), Inches(top), Inches(.07), Inches(height))
+    bar.fill.solid()
+    bar.fill.fore_color.rgb = palette[accent]
+    bar.line.fill.background()
+    heading = slide.shapes.add_textbox(Inches(left + .22), Inches(top + .12),
+                                       Inches(width - .35), Inches(.24))
+    heading_paragraph = heading.text_frame.paragraphs[0]
+    heading_paragraph.text = title.upper()
+    heading_paragraph.font.name = "Aptos"
+    heading_paragraph.font.size = Pt(9)
+    heading_paragraph.font.bold = True
+    heading_paragraph.font.color.rgb = palette[accent]
+    if not lines:
+        return
+    body = slide.shapes.add_textbox(Inches(left + .22), Inches(top + .42),
+                                    Inches(width - .4), Inches(max(height - .52, .1)))
+    frame = body.text_frame
+    frame.word_wrap = True
+    frame.margin_left = frame.margin_right = 0
+    frame.margin_top = frame.margin_bottom = 0
+    for index, line in enumerate(lines):
+        paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
+        _add_markdown_paragraph(paragraph, line, is_bullet=bullets)
+        paragraph.font.name = "Aptos"
+        paragraph.font.size = Pt(11)
+        paragraph.space_after = Pt(4)
+
+
+def _style_table(table: Any) -> None:
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+    from pptx.oxml.xmlchemy import OxmlElement
+    from pptx.util import Pt
+    for row_index, row in enumerate(table.rows):
+        for column, cell in enumerate(row.cells):
+            cell.margin_left = cell.margin_right = Pt(4)
+            cell.margin_top = cell.margin_bottom = Pt(2)
+            cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = (RGBColor(53, 105, 155) if row_index == 0
+                                        else RGBColor(255, 255, 255))
+            for paragraph in cell.text_frame.paragraphs:
+                paragraph.alignment = PP_ALIGN.LEFT if column == 4 else PP_ALIGN.CENTER
+                paragraph.font.size = Pt(9)
+                paragraph.font.name = "Aptos"
+                paragraph.font.color.rgb = (RGBColor(255, 255, 255) if row_index == 0
+                                            else RGBColor(34, 42, 48))
+            tc_pr = cell._tc.get_or_add_tcPr()
+            for edge_name in ("a:lnL", "a:lnR", "a:lnT", "a:lnB"):
+                edge = next((child for child in tc_pr
+                             if child.tag.rsplit("}", 1)[-1] == edge_name.rsplit(":", 1)[-1]),
+                            None)
+                if edge is None:
+                    edge = OxmlElement(edge_name)
+                    tc_pr.append(edge)
+                edge.set("w", "12700")
+                solid = OxmlElement("a:solidFill")
+                color = OxmlElement("a:srgbClr")
+                color.set("val", "000000")
+                solid.append(color)
+                edge.append(solid)
     for row in table.rows:
         for cell in row.cells:
             for paragraph in cell.text_frame.paragraphs:
                 for run in paragraph.runs:
-                    run.font.size = Pt(12)
+                    run.font.size = Pt(9)
 
 
 def _add_json_text(slide: Any, value: Any, *, left: float, top: float,
@@ -194,13 +335,15 @@ def _add_markdown_paragraph(paragraph: Any, value: str, *, is_bullet: bool) -> N
         paragraph.add_run().text = value[position:]
 
 
-def _find_image(root: Path, identifier: str, view: str) -> Path | None:
+def _find_image(root: Path, identifier: str, view: str,
+                exclude: Sequence[str] = ()) -> Path | None:
     if not root.is_dir():
         return None
     token = identifier.lower().replace(" ", "_")
     candidates = sorted(path for path in root.rglob("*")
                         if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg"}
-                        and view.lower() in path.stem.lower())
+                        and view.lower() in path.stem.lower()
+                        and not any(token.lower() in path.stem.lower() for token in exclude))
     exact = [path for path in candidates
              if token and (token in path.stem.lower()
                            or token == path.parent.name.lower())]
@@ -220,12 +363,10 @@ def _parts(bom: Mapping[str, Any], part_ids: Sequence[str] | None) -> list[Mappi
 
 def _slide(presentation: Any, section: str) -> Any:
     from pptx.dml.color import RGBColor
-    from pptx.util import Inches
     slide = presentation.slides.add_slide(presentation.slide_layouts[6])
     slide.background.fill.solid()
     slide.background.fill.fore_color.rgb = RGBColor(247, 250, 249)
-    footer = slide.shapes.add_textbox(Inches(0.65), Inches(7.08), Inches(12), Inches(0.2))
-    footer.text_frame.text = f"Engineering report · {section}"
+    _add_logo(slide)
     return slide
 
 
@@ -252,13 +393,35 @@ def _placeholder(slide: Any, text: str) -> None:
 
 def _cover(presentation: Any, context: EngineeringPowerPointContext, count: int) -> None:
     slide = _slide(presentation, "Cover")
-    _title(slide, _display(context.assembly.get("assembly_name_guess"), "Engineering report"))
-    from pptx.util import Inches, Pt
-    box = slide.shapes.add_textbox(Inches(0.75), Inches(2.0), Inches(11), Inches(2.5))
-    box.text_frame.text = "Assembly and monopart engineering brief"
-    for paragraph in box.text_frame.paragraphs:
-        paragraph.font.name = "Aptos"
-        paragraph.font.size = Pt(20)
+    assembly_name = _display(context.assembly.get("assembly_name_guess"), "Assembly")
+    _title(slide, f"{assembly_name} - Engineering Report")
+    image = _find_image(context.images_root, "assembly", "iso1", exclude=("exploded",))
+    if image:
+        from pptx.util import Inches
+        slide.shapes.add_picture(str(image), Inches(3.65), Inches(1.35),
+                                 width=Inches(6.0))
+    else:
+        _placeholder(slide, "Assembly iso1 image unavailable")
+
+
+def _add_logo(slide: Any) -> None:
+    logo = Path(__file__).resolve().parents[3] / "logos" / "HB.png"
+    if logo.is_file():
+        from pptx.util import Inches
+        slide.shapes.add_picture(str(logo), Inches(11.75), Inches(.16), width=Inches(1.35))
+
+
+def _add_image_or_placeholder(slide: Any, image: Path | None, text: str, *,
+                              left: float, top: float, width: float,
+                              height: float | None = None) -> None:
+    from pptx.util import Inches
+    if image:
+        kwargs = {"width": Inches(width)}
+        if height is not None:
+            kwargs = {"height": Inches(height)}
+        slide.shapes.add_picture(str(image), Inches(left), Inches(top), **kwargs)
+    else:
+        _placeholder(slide, text)
 
 
 def _cell(cell: Any, value: Any, *, bold: bool) -> None:

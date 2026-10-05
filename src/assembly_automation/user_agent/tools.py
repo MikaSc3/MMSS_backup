@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
 import re
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from assembly_automation.workflows.definitions import (AssemblyAssessmentWorkflow,
                                                        AutomationPlanningWorkflow)
@@ -29,7 +29,7 @@ from .session_state import AgentSessionState
 # Groups describe product capabilities, not implementation-node categories.
 # The agent sees only the state-appropriate subset of these tools.
 TOOL_GROUPS: dict[str, tuple[str, ...]] = {
-    "session_context": ("inspect_session", "ingest_documents", "record_context_change"),
+    "session_context": ("inspect_session", "ingest_documents"),
     "assessment_review": ("analyse_assembly", "analyse_monoparts", "generate_sequence",
                           "revise_sequence", "ffa_evaluation"),
     "artifact_review": ("read_artifact", "summarize_parts", "change_artifact"),
@@ -87,9 +87,18 @@ class WorkflowAgentTools:
         self.state_path = self.paths.user_agent_root / "state.json"
         self.current_user_message: str | None = None
         self.artifact_change_planner: ArtifactChangePlanner | None = None
+        self.status_callback: Callable[[str], None] | None = None
         self._automation_workflow: AutomationPlanningWorkflow | None = None
         if not self.state_path.exists():
             self._write_state(self._derive_state())
+
+    def set_status_callback(self, callback: Callable[[str], None]) -> None:
+        """Connect an application status message to a workflow boundary."""
+        self.status_callback = callback
+
+    def _announce_status(self, message: str) -> None:
+        if self.status_callback is not None:
+            self.status_callback(message)
 
     def _derive_state(self) -> dict[str, Any]:
         manifest_path = self.paths.root / "manifest.json"
@@ -245,6 +254,9 @@ class WorkflowAgentTools:
                 "artifacts": {"assembly_overview": self.paths.assembly_overview.is_file(),
                               "bom": self.paths.enriched_bom.is_file(),
                               "sequence": bool(active and self.paths.revision(active).joinpath("assembly_sequence.json").is_file()),
+                              "interaction_analysis": bool(active and self.paths.revision(active).joinpath("interaction_analysis", "interaction_analysis.json").is_file()),
+                              "ffa_assessment": bool(active and self.paths.ffa(active).joinpath("ffa_assessment.json").is_file()),
+                              "ffa_scores": bool(active and self.paths.ffa(active).joinpath("ffa_scores.json").is_file()),
                               "report": bool(active and self.paths.reports(active).joinpath("report.json").is_file()),
                               "automation_idea": bool((planning.get("artifacts") or {}).get("automation_idea")),
                               "detailed_step_plans": bool((planning.get("artifacts") or {}).get("detailed_step_plans")),
@@ -288,28 +300,6 @@ class WorkflowAgentTools:
             return {"documents": [], "warnings": ["No supporting files were provided."]}
         return self.documents.ingest(selected)
 
-    def record_context_change(self, scope: str, raw_user_message: str, agent_summary: str,
-                              feedback_type: str = "context",
-                              targets: list[str] | None = None) -> dict[str, Any]:
-        """Record substantive new context that changes analysis inputs and makes affected artifacts stale. Do not call for approval, confirmation, or requests to continue."""
-        if (self.current_user_message is not None
-                and raw_user_message.strip() != self.current_user_message.strip()):
-            raise ValueError("raw_user_message must reproduce the user's current message exactly")
-        event = self.feedback.append(scope=scope, raw_user_message=raw_user_message,
-                                     agent_summary=agent_summary, feedback_type=feedback_type,
-                                     targets=targets or [])
-        state = self._state()
-        if scope in {"global", "assembly"}:
-            invalidate(state, "assembly")
-        elif scope == "part":
-            invalidate(state, "monoparts")
-        elif scope == "sequence":
-            invalidate(state, "sequence")
-        else:
-            invalidate(state, "ffa_report")
-        self._write_state(state)
-        return {"status": "recorded", "feedback": event, "stale": state["stale"]}
-
     def analyse_assembly(self) -> dict[str, Any]:
         """Create or rerun the assembly-context artifact. Use after STEP input or after a material assembly-context change; preprocessing is included. Stops at the assembly HITL checkpoint—present its name, function, and structure for correction/approval."""
         state = self._state()
@@ -317,7 +307,9 @@ class WorkflowAgentTools:
         force = bool(state["stale"]["assembly"] and existed)
         result = run_assembly_review_graph(
             workflow=self.workflow, step_file=self._step(),
-            user_context=self._context("global", "assembly"), force=force)
+            user_context=self._context("global", "assembly"), force=force,
+            on_preprocessed=lambda: self._announce_status(
+                "STEP preprocessing is complete. Analyzing the assembly."))
         state["active_assembly_revision"] = result.get("revision_id") or self.paths.active_revision("assembly")
         mark_current(state, "assembly")
         if force or not existed:
@@ -332,8 +324,13 @@ class WorkflowAgentTools:
         return {"status": "complete", "artifact": str(output),
                 "relative_artifact": str(output.relative_to(self.paths.root))}
 
-    def analyse_monoparts(self, part_ids: list[str] | None = None) -> dict[str, Any]:
-        """Create or rerun intrinsic monopart analyses and the enriched BOM after assembly context is current. Stops at the BOM HITL checkpoint; use part_ids only for a requested targeted rerun."""
+    def analyse_monoparts(self, user_context: str,
+                          part_ids: list[str] | None = None) -> dict[str, Any]:
+        """Create or rerun intrinsic monopart analyses using only the supplied context.
+
+        The agent must provide the context explicitly for every call. Persistent
+        feedback is intentionally not loaded or merged here.
+        """
         state = self._state()
         if state["stale"]["assembly"]:
             raise RuntimeError("Assembly analysis is missing or stale; analyze it first")
@@ -342,7 +339,7 @@ class WorkflowAgentTools:
         targets = list(part_ids or [])
         result = run_bom_review_graph(
             workflow=self.workflow,
-            user_context=self._context("global", "assembly", "part", targets=targets),
+            user_context=user_context,
             part_ids=targets or None, force=force)
         state["active_monoparts_revision"] = result.get("revision_id") or self.paths.active_revision("monoparts")
         mark_current(state, "monoparts")
@@ -411,33 +408,65 @@ class WorkflowAgentTools:
         self._write_state(state)
         return {**result, "stale": state["stale"]}
 
-    def change_artifact(self, target: str, change: str, raw_user_message: str = "") -> dict[str, Any]:
-        """Apply one natural-language correction to a resolved editable artifact entity."""
+    def change_artifact(self, artifact: str, change: str,
+                        revision_id: str = "") -> dict[str, Any]:
+        """Rewrite one named JSON artifact from a natural-language correction.
+
+        Name the artifact explicitly: assembly_context, BOM, sequence,
+        interaction_analysis, ffa_assessment, ffa_scores, report,
+        automation_idea, detailed_step_plans, automation_concept, layout, or
+        cost_estimate. The rewrite LLM receives the complete artifact and must
+        return a complete replacement with every affected location updated.
+        The replacement is schema-validated, backed up, and atomically saved.
+        Use revision_id only when the user explicitly requests a non-active
+        revision. Future planning preferences belong in the dedicated planning
+        or revision tool rather than this correction tool.
+        """
         if self.artifact_change_planner is None:
-            raise RuntimeError("The semantic artifact-change planner is not configured")
-        resolved = resolve_target(self.artifacts, target)
-        planned = self.artifact_change_planner.plan(resolved, change)
-        raw_user_message = raw_user_message.strip() or change
-        summary = str(planned["plan"].get("summary") or "Applied user-requested artifact correction")
-        result = self.edit_artifact_fields(
-            resolved.artifact, resolved.entity_id,
-            json.dumps(planned["changes"], ensure_ascii=False),
-            resolved.expected_sha256, summary, raw_user_message,
-            revision_id=resolved.revision_id or "")
+            raise RuntimeError("The artifact rewriter is not configured")
+        resolved = resolve_target(self.artifacts, artifact, revision_id)
+        planned = self.artifact_change_planner.rewrite(resolved, change)
+        summary = str(planned["rewrite"].get("summary")
+                      or "Applied user-requested artifact correction")
+        result = self.artifacts.replace(
+            resolved.artifact, planned["artifact"],
+            expected_sha256=resolved.expected_sha256, reason=summary,
+            revision_id=resolved.revision_id)
         self._sync_published_edit(resolved.artifact, result["path"])
+        state = self._state()
+        if resolved.artifact == "assembly_overview":
+            mark_current(state, "assembly")
+            invalidate(state, "monoparts")
+        elif resolved.artifact == "bom":
+            mark_current(state, "monoparts")
+            invalidate(state, "sequence")
+        elif resolved.artifact == "sequence":
+            mark_current(state, "sequence")
+        elif resolved.artifact == "interaction_analysis":
+            invalidate(state, "interaction")
+        elif resolved.artifact in {"ffa_assessment", "ffa_scores"}:
+            invalidate(state, "ffa_report")
+        elif resolved.artifact == "report":
+            mark_current(state, "final")
+        self._write_state(state)
+
+        rendering = None
+        if resolved.artifact == "layout":
+            from assembly_automation.workflows.nodes.layout_planner.renderer import render_layout
+            rendering = render_layout(planned["artifact"], resolved.path.with_name("layout.svg"))
         record = {
             "input": planned["input"],
-            "plan": planned["plan"],
+            "rewrite": planned["rewrite"],
             "execution": planned["execution"],
             "application": {"artifact": resolved.artifact,
-                            "entity_id": resolved.entity_id,
                             "sha256": result["sha256"]},
         }
         run_record_path = write_run_record(
             result["path"], "artifact_change", record)
         return {**result, "target": resolved.label,
-                "changes": planned["changes"], "summary": summary,
-                "run_record_path": run_record_path}
+                "changed_locations": planned["rewrite"]["changed_locations"],
+                "summary": summary, "rendering": rendering,
+                "stale": state["stale"], "run_record_path": run_record_path}
 
     def _next_revision(self) -> str:
         root = self.paths.sequence_root / "revisions"
@@ -572,22 +601,13 @@ class WorkflowAgentTools:
         return {"status": "awaiting_idea_review", "revision_id": revision,
                 "artifact": response["artifact"], "feedback": event}
 
-    def automation_concept_planner(self, user_confirmation: str) -> dict[str, Any]:
-        """After clear approval of the active automation idea, plan all assembly steps internally in parallel and consolidate one concept. Do not use for an idea change or discuss individual step plans as a checkpoint."""
-        if self.current_user_message is not None and user_confirmation.strip() != self.current_user_message.strip():
-            raise ValueError("user_confirmation must reproduce the user's current message exactly")
-        if not re.search(r"\b(yes|ok|okay|approve|approved|go|proceed|continue|correct|right|ja|weiter|passt)\b",
-                         user_confirmation.lower()):
-            raise ValueError("The user has not clearly approved the automation idea")
+    def automation_concept_planner(self) -> dict[str, Any]:
+        """Plan every assembly step in parallel from the active automation idea and consolidate the equipment requirements. Use when the conversation calls for detailed planning; do not create an approval checkpoint."""
         manifest = self._planning_manifest()
         relative = (manifest.get("artifacts") or {}).get("automation_idea")
         if not isinstance(relative, str):
             raise RuntimeError("Generate an automation idea before detailed concept planning")
         idea_path = self.paths.root / relative
-        self.feedback.append(scope="automation_idea", raw_user_message=user_confirmation,
-                             agent_summary=f"User approved {manifest.get('active_idea_revision')}.",
-                             feedback_type="approval",
-                             targets=[str(manifest.get("active_idea_revision") or "")])
         revision = self._next_planning_revision("concept")
         response = run_automation_concept_graph(
             workflow=self._planning(), idea_path=idea_path, revision_id=revision)
@@ -596,7 +616,7 @@ class WorkflowAgentTools:
 
     def revise_automation_concept(self, raw_user_message: str,
                                   feedback_summary: str) -> dict[str, Any]:
-        """Apply bounded feedback to the final consolidated concept only. For global policy, human-role, material-flow, or prohibited-technology changes, revise the automation idea instead."""
+        """Apply bounded feedback to the consolidated equipment list only. For global policy, human-role, material-flow, or technology-direction changes, revise the automation idea instead."""
         if self.current_user_message is not None and raw_user_message.strip() != self.current_user_message.strip():
             raise ValueError("raw_user_message must reproduce the user's current message exactly")
         if not feedback_summary.strip():
@@ -715,7 +735,8 @@ class WorkflowAgentTools:
         return [item["revision_id"] for item in self.inspect_session()["available_revisions"]["sequence"]]
 
     def _read_revision_artifact(self, artifact: str, revision_id: str = "") -> tuple[Path, Any, str]:
-        if artifact in {"sequence", "report"}:
+        if artifact in {"sequence", "interaction_analysis", "ffa_assessment",
+                        "ffa_scores", "report"}:
             revision = revision_id or str(self._state().get("active_sequence_revision") or "")
             if not revision:
                 raise FileNotFoundError(f"No active {artifact} revision is available")
@@ -782,7 +803,8 @@ class WorkflowAgentTools:
                              if isinstance(part, Mapping) and part.get("part_id")]
                 raise ValueError(f"Unknown part ID {part_id!r}; available IDs: {available}")
             return {"request": "part", "identifier": part_id, "data": matches[0]}
-        elif normalized in {"sequence", "report"}:
+        elif normalized in {"sequence", "interaction_analysis", "ffa_assessment",
+                            "ffa_scores", "report"}:
             artifact = normalized
             path, value, revision_id = self._read_revision_artifact(
                 artifact, identifier.strip())
@@ -848,7 +870,8 @@ class WorkflowAgentTools:
             return {"request": normalized, "identifier": selector,
                     "revision_id": revision, "data": matches[0]}
         else:
-            supported = ("assembly_context, BOM, part + exact part ID, sequence, report, "
+            supported = ("assembly_context, BOM, part + exact part ID, sequence, "
+                         "interaction_analysis, ffa_assessment, ffa_scores, report, "
                          "sequence_step, detailed_plan, report_finding, automation_idea, "
                          "detailed_step_plans, automation_concept, layout_item, layout, "
                          "cost_estimate")

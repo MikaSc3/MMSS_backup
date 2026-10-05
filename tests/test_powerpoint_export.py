@@ -23,7 +23,18 @@ class PowerPointExportTests(unittest.TestCase):
                 "assembly_name_guess": "Test fixture",
                 "assembly_description": "Two parts",
                 "primary_function": ["**Locate** parts", "Maintain alignment"],
-                "partslist": ["Base and pin"],
+                "partslist": [{
+                    "instance_ids": ["part_001"],
+                    "name": "Base",
+                    "rendered_color": "blue",
+                    "geometry": ["Base plate with a locating bore"],
+                    "assembly_role": ["Provides the locating reference for the pin"],
+                }],
+                "interfaces": [{
+                    "instance_ids": ["part_001", "part_002"],
+                    "statements": ["The pin locates in the base bore."],
+                }],
+                "uncertainties": ["Material grade is not available in the STEP input."],
                 "extra": {"unit": "mm"},
             }), encoding="utf-8")
             bom = paths.monoparts("r004") / "bom.json"
@@ -47,7 +58,7 @@ class PowerPointExportTests(unittest.TestCase):
             self.assertEqual(output.parent.name, "powerpoint_exports")
             from pptx import Presentation
             presentation = Presentation(output)
-            self.assertEqual(len(presentation.slides), 4)
+            self.assertEqual(len(presentation.slides), 5)
             text = "\n".join(
                 shape.text for slide in presentation.slides for shape in slide.shapes
                 if hasattr(shape, "text")
@@ -58,8 +69,9 @@ class PowerPointExportTests(unittest.TestCase):
             self.assertIn("Two parts", text)
             self.assertIn("Locate parts", text)
             self.assertIn("Maintain alignment", text)
-            self.assertNotIn("Base and pin", text)
             self.assertNotIn("length", text)
+            self.assertIn("Test fixture - Bill of Material", text)
+            self.assertIn("The pin locates in the base bore.", text)
 
             assembly_slide = presentation.slides[1]
             body = next(shape for shape in assembly_slide.shapes

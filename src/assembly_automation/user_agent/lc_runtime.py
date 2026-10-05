@@ -45,11 +45,8 @@ class ToolEventMiddleware(AgentMiddleware):
         context = request.runtime.context
         user_message = context.user_message if isinstance(context, AgentRuntimeContext) else ""
         raw_fields = {
-            "record_context_change": "raw_user_message",
             "revise_sequence": "raw_user_message",
-            "change_artifact": "raw_user_message",
             "automation_concept_idea_generator": "raw_user_message",
-            "automation_concept_planner": "user_confirmation",
             "revise_automation_concept": "raw_user_message",
             "layout_planner": "raw_user_message",
             "revise_layout": "raw_user_message",

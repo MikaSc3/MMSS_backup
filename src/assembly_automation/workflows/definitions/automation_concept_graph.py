@@ -1,8 +1,8 @@
 """LangGraph boundary for cohesive automation-concept planning.
 
 The established planner already owns the domain-correct macro idea, parallel
-step planning, aggregation, and concept synthesis. This graph makes the
-approved-idea transition explicit without fragmenting dependent domain work.
+step planning, aggregation, and concept synthesis. This graph keeps that
+dependent domain work cohesive without adding an approval transition.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ class AutomationConceptState(TypedDict, total=False):
 
 
 def build_automation_concept_graph(workflow: "AutomationPlanningWorkflow") -> Any:
-    """Compile the approved-idea-to-concept capability for one session."""
+    """Compile the active-idea-to-concept capability for one session."""
 
     session_root = workflow.paths.root.resolve()
 
@@ -42,10 +42,10 @@ def build_automation_concept_graph(workflow: "AutomationPlanningWorkflow") -> An
             idea_path=state["idea_path"], revision_id=state["revision_id"])}
 
     graph = StateGraph(AutomationConceptState)
-    graph.add_node("validate_approved_idea", validate)
+    graph.add_node("validate_automation_idea", validate)
     graph.add_node("build_automation_concept", execute)
-    graph.add_edge(START, "validate_approved_idea")
-    graph.add_edge("validate_approved_idea", "build_automation_concept")
+    graph.add_edge(START, "validate_automation_idea")
+    graph.add_edge("validate_automation_idea", "build_automation_concept")
     graph.add_edge("build_automation_concept", END)
     return graph.compile(name="automation_concept_planning")
 

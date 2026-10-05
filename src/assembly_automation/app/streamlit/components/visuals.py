@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ..selection import SelectionContext
@@ -50,15 +51,42 @@ def images_for_selection(entries: list[Any], selection: SelectionContext | None)
         priority.get(entry.category, 5), int(entry.step_id or 0), entry.label.lower()))
 
 
+def image_view(entry: Any) -> str:
+    """Classify renderings from their stable category and filename conventions."""
+    if getattr(entry, "category", "") in {"step_collage", "sequence_overview"}:
+        return "Collage"
+    token = re.sub(r"[^a-z0-9]+", "", f"{entry.path.stem} {entry.label}".casefold())
+    if "iso1" in token:
+        return "ISO1"
+    return "Other"
+
+
+def filter_images(entries: list[Any], selected_view: str) -> list[Any]:
+    """Apply the visual-workspace type filter without changing artifact scope."""
+    if selected_view == "All":
+        return entries
+    if selected_view == "Collage":
+        return [entry for entry in entries if image_view(entry) == "Collage"]
+    if selected_view == "ISO1":
+        return [entry for entry in entries if image_view(entry) == "ISO1"]
+    raise ValueError(f"Unknown image view: {selected_view}")
+
+
 def render_visuals(st: Any, entries: list[Any], selection: SelectionContext | None = None,
                    *, show_header: bool = True, use_all_entries: bool = False) -> None:
     if show_header:
         st.markdown("#### Visual workspace")
         st.caption("Visual evidence for the selected output")
     images = entries if use_all_entries else images_for_selection(entries, selection)
+    filter_key = f"visual_filter::{selection.key if selection else 'live'}"
+    if st.session_state.get(filter_key) not in {"ISO1", "Collage", "All"}:
+        st.session_state[filter_key] = "ISO1"
+    selected_filter = st.segmented_control(
+        "Images", ("ISO1", "Collage", "All"), key=filter_key,
+        label_visibility="collapsed", width="stretch") or "ISO1"
+    images = filter_images(images, selected_filter)
     if not images:
-        st.markdown("<div class='empty-visual'>VISUAL OUTPUT PENDING</div>",
-                    unsafe_allow_html=True)
+        st.caption(f"No {selected_filter} image is available for this selection.")
         return
     labels = [entry.label for entry in images]
     view_key = f"visual_view::{selection.key if selection else 'none'}"
@@ -68,10 +96,9 @@ def render_visuals(st: Any, entries: list[Any], selection: SelectionContext | No
                           format_func=lambda index: labels[index],
                           label_visibility="collapsed")
     selected = images[chosen]
-    _show_image(st, selected.path, caption=selected.label)
+    _show_image(st, selected.path)
     if len(images) > 1:
         cols = st.columns(min(4, len(images)))
         for index, entry in enumerate(images[:8]):
             with cols[index % len(cols)]:
                 _show_image(st, entry.path)
-                st.caption(entry.label[:28])

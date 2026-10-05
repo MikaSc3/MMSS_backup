@@ -1,4 +1,4 @@
-"""Constrained natural-language planning for small artifact corrections."""
+"""Schema-validated whole-artifact rewriting from natural-language corrections."""
 
 from .planner import ArtifactChangePlanner
 from .target_resolver import ResolvedTarget, resolve_target

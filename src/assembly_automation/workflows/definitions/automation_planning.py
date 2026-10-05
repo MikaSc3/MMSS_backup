@@ -37,7 +37,7 @@ class AutomationPlanningNodeRegistry:
 
 
 def default_node_registry() -> AutomationPlanningNodeRegistry:
-    from assembly_automation.workflows.nodes.automation_concept import run_automation_concept_synthesis
+    from assembly_automation.workflows.nodes.automation_concept_synthesis import run_automation_concept_synthesis
     from assembly_automation.workflows.nodes.automation_idea import run_automation_idea
     from assembly_automation.workflows.nodes.step_planner_detailed import run_step_planner_detailed
     from assembly_automation.workflows.nodes.layout_planner import run_layout_planner

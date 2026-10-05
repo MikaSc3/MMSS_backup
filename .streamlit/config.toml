@@ -1,5 +1,8 @@
 [theme]
-primaryColor = "#1f77b4"
+primaryColor = "#2A81BF"
+blueColor = "#2A81BF"
+borderColor = "#7EB3D8"
+showWidgetBorder = true
 backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f0f2f6"
 textColor = "#262626"

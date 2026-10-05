@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import sys
 import unittest
 
@@ -34,46 +35,46 @@ SETTINGS = {
 
 def target():
     return ResolvedTarget(
-        requested="part001", artifact="bom", entity_id="part_001", revision_id=None,
-        label="part part_001",
-        current={"nature_of_provision_guess": "Provided upright.",
-                 "handling_implications": "Grip from above."},
-        editable_fields=("nature_of_provision_guess", "handling_implications"),
+        requested="assembly_context", artifact="assembly_overview", revision_id=None,
+        label="assembly overview", path=Path("assembly_overview.json"),
+        current={"assembly_name_guess": ["Old name"],
+                 "assembly_description": ["Old description"]},
         expected_sha256="abc",
     )
 
 
 class ArtifactChangePlannerTests(unittest.TestCase):
-    def test_returns_minimal_validated_changes(self):
+    def test_returns_complete_rewritten_artifact(self):
         planner = ArtifactChangePlanner(SETTINGS, {}, llm=_FakeLlm({
-            "edits": [{"field": "nature_of_provision_guess",
-                       "new_value": "Provided face down.",
-                       "reason": "The user specified the orientation."}],
-            "summary": "Updated provision orientation.",
+            "artifact_json": json.dumps({"assembly_name_guess": ["New name"],
+                                         "assembly_description": ["Updated description"]}),
+            "changed_locations": ["assembly_name_guess", "assembly_description"],
+            "summary": "Updated the assembly identity.",
         }))
-        result = planner.plan(target(), "The part is provisioned face down.")
-        self.assertEqual(result["changes"],
-                         {"nature_of_provision_guess": "Provided face down."})
-        self.assertEqual(result["input"]["editable_fields"],
-                         ["nature_of_provision_guess", "handling_implications"])
+        result = planner.rewrite(target(), "Use the corrected assembly name.")
+        self.assertEqual(result["artifact"]["assembly_name_guess"], ["New name"])
+        self.assertEqual(result["input"]["CURRENT_ARTIFACT"], target().current)
+        self.assertEqual(
+            result["input"]["NODE_STRUCTURED_OUTPUT_CONTRACT"]["source_model"],
+            "AssemblyAnalysis")
 
-    def test_rejects_model_attempt_to_change_read_only_field(self):
+    def test_rejects_missing_complete_artifact(self):
         planner = ArtifactChangePlanner(SETTINGS, {}, llm=_FakeLlm({
-            "edits": [{"field": "part_color", "new_value": "red",
-                       "reason": "Unsupported inferred change."}],
-            "summary": "Changed color.",
+            "artifact_json": "{}", "changed_locations": ["assembly_name_guess"],
+            "summary": "Returned no artifact.",
         }))
-        with self.assertRaisesRegex(ValueError, "read-only or unknown"):
-            planner.plan(target(), "Make it red.")
+        with self.assertRaisesRegex(ValueError, "no complete artifact"):
+            planner.rewrite(target(), "Use the corrected name.")
 
-    def test_rejects_unchanged_field(self):
+    def test_rejects_unchanged_artifact(self):
+        resolved = target()
         planner = ArtifactChangePlanner(SETTINGS, {}, llm=_FakeLlm({
-            "edits": [{"field": "nature_of_provision_guess",
-                       "new_value": "Provided upright.", "reason": "No change."}],
+            "artifact_json": json.dumps(resolved.current),
+            "changed_locations": ["assembly_name_guess"],
             "summary": "No effective change.",
         }))
-        with self.assertRaisesRegex(ValueError, "unchanged field"):
-            planner.plan(target(), "Keep it the same.")
+        with self.assertRaisesRegex(ValueError, "unchanged"):
+            planner.rewrite(resolved, "Keep it the same.")
 
 
 if __name__ == "__main__":

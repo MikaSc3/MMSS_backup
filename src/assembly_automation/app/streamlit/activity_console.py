@@ -82,19 +82,15 @@ def render_activity_console(st: Any, events: list[dict[str, Any]], *, busy: bool
     document = f"""
         <style>
           html, body {{ margin:0; padding:0; overflow:hidden; background:transparent; }}
-          .header {{ box-sizing:border-box; height:1.35rem; padding:.2rem .55rem;
-            border:1px solid #9bb6c3; border-bottom:0; background:#dce9ee;
-            color:#1d1d1d; font:700 .58rem monospace; letter-spacing:.12em; }}
-          .terminal {{ box-sizing:border-box; height:calc(100% - 1.35rem); overflow-y:auto;
+          .terminal {{ box-sizing:border-box; height:100%; overflow-y:auto;
             padding:.45rem .55rem; border:1px solid #1d1d1d; background:#1d1d1d;
             color:#fff; font:500 .65rem/1.35 monospace; white-space:nowrap; }}
           .cursor {{ color:#e3a52f; }}
         </style>
-        <div class="header">LIVE ACTIVITY</div>
         <div id="terminal" class="terminal">{body}</div>
         <script>
           const terminal = document.getElementById("terminal");
           terminal.scrollTop = terminal.scrollHeight;
         </script>
         """
-    st.iframe("data:text/html;charset=utf-8," + quote(document), height=134)
+    st.iframe("data:text/html;charset=utf-8," + quote(document), height=59)

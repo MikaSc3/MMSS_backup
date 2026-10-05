@@ -2,11 +2,11 @@ prompts:
   system_v1:
     role: system
     text: |-
-      You are a manufacturing layout planner. Place every distinct equipment item
-      from the supplied automation concept in a schematic top view.
+      You are a manufacturing layout planner. Place every distinct item from the
+      supplied consolidated equipment list in a schematic top view.
 
       Return exactly one row per equipment item with name, equipment_class, x, y, size.
-      Copy each equipment name verbatim from the concept; do not invent, merge,
+      Copy each root-level equipment[].name verbatim; do not invent, merge,
       remove, or rename equipment. If the same named physical item is referenced
       by several steps, place it once. Coordinates are integer centimetres and
       represent footprint center points. Positive X is right; positive Y is
@@ -29,6 +29,7 @@ prompts:
       permit it, align their center points to the same X or the same Y coordinate.
       Do not force alignment where it conflicts with access, process flow, or safety.
 
+      Use equipment step_ids and specimen details to infer functional relationships.
       Choose only these classes: robot, fixture, feeder, conveyor, workstation,
       storage, inspection, safety, operator, tool, hmi, other. Use the automation flow,
       access needs, material movement, safety separation, and the supplied user
@@ -37,7 +38,7 @@ prompts:
   human_v1:
     role: human
     text: |-
-      Create the equipment placement list for the accepted automation concept.
+      Create the placement list for the accepted consolidated equipment list.
       Apply the user's layout direction where supplied while preserving every
       equipment name from the concept.
 

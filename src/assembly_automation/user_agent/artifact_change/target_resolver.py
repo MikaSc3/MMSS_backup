@@ -1,9 +1,9 @@
-"""Resolve user-facing semantic targets without giving the LLM filesystem access."""
+"""Resolve a named session artifact without exposing filesystem paths to the LLM."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
+from pathlib import Path
 from typing import Any
 
 from ..artifacts import ArtifactEditor
@@ -13,50 +13,54 @@ from ..artifacts import ArtifactEditor
 class ResolvedTarget:
     requested: str
     artifact: str
-    entity_id: str
     revision_id: str | None
     label: str
+    path: Path
     current: dict[str, Any]
-    editable_fields: tuple[str, ...]
     expected_sha256: str
 
 
-def _canonical(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.casefold())
+ALIASES = {
+    "assembly": "assembly_overview",
+    "assembly_context": "assembly_overview",
+    "assembly_overview": "assembly_overview",
+    "bom": "bom",
+    "parts": "bom",
+    "monoparts": "bom",
+    "sequence": "sequence",
+    "assembly_sequence": "sequence",
+    "interaction": "interaction_analysis",
+    "interaction_analysis": "interaction_analysis",
+    "ffa": "ffa_assessment",
+    "ffa_assessment": "ffa_assessment",
+    "ffa_scores": "ffa_scores",
+    "report": "report",
+    "ffa_report": "report",
+    "automation_idea": "automation_idea",
+    "detailed_step_plans": "detailed_step_plans",
+    "automation_concept": "automation_concept",
+    "layout": "layout",
+    "cost": "cost_estimate",
+    "cost_estimate": "cost_estimate",
+}
 
 
-def _part_id(editor: ArtifactEditor, requested: str) -> str:
-    raw = requested.split(":", 1)[1] if requested.casefold().startswith("part:") else requested
-    bom = editor.read("bom")
-    ids = [part.get("part_id") for part in bom.get("parts", []) if isinstance(part, dict)
-           and isinstance(part.get("part_id"), str)]
-    exact = [part_id for part_id in ids if part_id.casefold() == raw.casefold()]
-    matches = exact or [part_id for part_id in ids if _canonical(part_id) == _canonical(raw)]
-    if len(matches) != 1:
-        raise ValueError(f"Expected one part matching {requested!r}, found {len(matches)}")
-    return matches[0]
-
-
-def resolve_target(editor: ArtifactEditor, target: str) -> ResolvedTarget:
-    requested = target.strip()
+def resolve_target(editor: ArtifactEditor, artifact: str,
+                   revision_id: str = "") -> ResolvedTarget:
+    """Resolve one complete active (or explicitly versioned) JSON artifact."""
+    requested = artifact.strip()
     if not requested:
-        raise ValueError("change_artifact target cannot be empty")
+        raise ValueError("change_artifact artifact cannot be empty")
     normalized = requested.casefold().replace(" ", "_")
-    revision_id = None
-    if normalized in {"assembly", "assembly_overview"}:
-        artifact, entity_id, label = "assembly_overview", "assembly", "assembly overview"
-    elif normalized in {"sequence", "assembly_sequence"}:
-        artifact, entity_id, label = "sequence", "sequence", "assembly sequence"
-    elif (match := re.fullmatch(r"step[:_ ]?0*(\d+)", requested, re.IGNORECASE)):
-        step_id = int(match.group(1))
-        artifact, entity_id, label = "sequence", f"step:{step_id}", f"sequence step {step_id}"
-    else:
-        part_id = _part_id(editor, requested)
-        artifact, entity_id, label = "bom", part_id, f"part {part_id}"
-    path = editor.resolve(artifact, revision_id=revision_id)
-    document = editor.read(artifact, revision_id=revision_id)
-    current, allowed = editor.field_target(artifact, document, entity_id)
+    canonical = ALIASES.get(normalized)
+    if canonical is None:
+        raise ValueError(
+            f"Unknown artifact {artifact!r}; supported artifacts: "
+            f"{', '.join(sorted(set(ALIASES.values())))}")
+    revision = revision_id.strip() or None
+    path = editor.resolve(canonical, revision_id=revision)
+    document = editor.read(canonical, revision_id=revision)
     return ResolvedTarget(
-        requested=requested, artifact=artifact, entity_id=entity_id,
-        revision_id=revision_id, label=label, current=dict(current),
-        editable_fields=tuple(sorted(allowed)), expected_sha256=editor.content_hash(path))
+        requested=requested, artifact=canonical, revision_id=revision,
+        label=canonical.replace("_", " "), path=path, current=document,
+        expected_sha256=editor.content_hash(path))

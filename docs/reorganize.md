@@ -1202,7 +1202,7 @@ develop_automation_idea(
 ```
 
 This instruction is planning context, not a correction to the assembly, BOM,
-sequence, or FfA report. It must therefore not use `record_context_change` and
+sequence, or FfA report. It must therefore not use the artifact correction tool and
 must not mark the assessment pipeline stale. The exact user message and a
 normalized planning brief are persisted as an automation-idea revision. The
 agent presents that idea and discusses it with the user. Only after acceptance

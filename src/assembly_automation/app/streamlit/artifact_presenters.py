@@ -48,7 +48,10 @@ def artifact_metrics(artifact_id: str, data: Any) -> dict[str, str | int | float
     elif artifact_id == "detailed_step_plans":
         metrics["Steps"] = len(data.get("steps") or [])
     elif artifact_id == "automation_concept":
-        metrics["Stations"] = len(data.get("stationen") or [])
+        if isinstance(data.get("equipment"), list):
+            metrics["Equipment"] = len(data["equipment"])
+        else:
+            metrics["Stations"] = len(data.get("stationen") or [])
     elif artifact_id == "layout":
         metrics["Equipment"] = len(data.get("equipment") or [])
     elif artifact_id == "cost_estimate":

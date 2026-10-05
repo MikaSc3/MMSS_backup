@@ -1,4 +1,4 @@
-"""Configured structured-output planner for one resolved artifact correction."""
+"""Configured LLM rewriter for one complete resolved artifact."""
 
 from __future__ import annotations
 
@@ -11,20 +11,75 @@ from assembly_automation.workflows.runtime.execution import invoke_structured
 from assembly_automation.workflows.runtime.llms import create_llm
 from assembly_automation.workflows.runtime.prompting import load_prompt
 from assembly_automation.workflows.nodes.assembly_analysis.structured_output import AssemblyAnalysis
-from assembly_automation.workflows.nodes.monopart_analysis.structured_output import SinglePartAnalysis
-from assembly_automation.workflows.nodes.sequence_generation.structured_output import AssemblySequence, AssemblyStep
-
+from assembly_automation.workflows.nodes.automation_concept_synthesis.structured_output import (
+    AutomationEquipmentList)
+from assembly_automation.workflows.nodes.automation_idea.structured_output import (
+    AutomationPlanningBrief)
+from assembly_automation.workflows.nodes.cost_planner.structured_output import EquipmentPriceMatches
+from assembly_automation.workflows.nodes.ffa_assessment.structured_output import FFAAssessment
+from assembly_automation.workflows.nodes.interaction_analysis.structured_output import (
+    InteractionAnalysis)
+from assembly_automation.workflows.nodes.layout_planner.structured_output import EquipmentLayout
+from assembly_automation.workflows.nodes.monopart_analysis.structured_output import (
+    SinglePartAnalysis)
+from assembly_automation.workflows.nodes.report_synthesis.structured_output import ReportInsights
+from assembly_automation.workflows.nodes.sequence_generation.structured_output import AssemblySequence
+from assembly_automation.workflows.nodes.step_planner_detailed.structured_output import (
+    DetailedStepPlan)
 from .structured_output import get_schema
 from .target_resolver import ResolvedTarget
 
 
-def _field_guidance(fields: tuple[str, ...]) -> dict[str, str]:
-    descriptions: dict[str, str] = {}
-    for model in (AssemblyAnalysis, SinglePartAnalysis, AssemblySequence, AssemblyStep):
-        for name, field in model.model_fields.items():
-            if name in fields and name not in descriptions:
-                descriptions[name] = field.description or f"Descriptive value for {name}."
-    return {name: descriptions.get(name, f"Descriptive value for {name}.") for name in fields}
+_NODE_CONTRACTS: dict[str, tuple[type[Any], str, str]] = {
+    "assembly_overview": (
+        AssemblyAnalysis, "$", "The node output is the complete stored artifact."),
+    "bom": (
+        SinglePartAnalysis, "$.parts[*].part_analysis",
+        "The stored BOM is a deterministic wrapper; this schema applies to every part_analysis."),
+    "sequence": (
+        AssemblySequence, "$", "The node output is the complete stored artifact."),
+    "interaction_analysis": (
+        InteractionAnalysis, "$.steps[*].interaction_analysis",
+        "The stored artifact aggregates one node output per assembly step."),
+    "ffa_assessment": (
+        FFAAssessment, "$.steps[*].ffa_assessment",
+        "The stored artifact aggregates one node output per assembly step."),
+    "report": (
+        ReportInsights, "compiled report insight fields",
+        "The report is compiled deterministically around this node output; preserve its wrapper."),
+    "automation_idea": (
+        AutomationPlanningBrief, "$", "The node output is the complete stored artifact."),
+    "detailed_step_plans": (
+        DetailedStepPlan, "$.steps[*]",
+        "The stored artifact aggregates one detailed-step node output per assembly step."),
+    "automation_concept": (
+        AutomationEquipmentList, "$", "The node output is the complete stored artifact."),
+    "layout": (
+        EquipmentLayout, "$", "The node output is the complete stored artifact."),
+    "cost_estimate": (
+        EquipmentPriceMatches, "price-matching evidence used by the deterministic estimate",
+        "The stored cost estimate is calculated deterministically from these matches; preserve its wrapper."),
+}
+
+
+def _node_contract(artifact: str, current: Mapping[str, Any]) -> dict[str, Any]:
+    """Expose original node field descriptions without pretending wrappers are node outputs."""
+    configured = _NODE_CONTRACTS.get(artifact)
+    if configured is None:
+        return {
+            "source_model": None,
+            "applies_at": "$",
+            "note": "This is a deterministic artifact with no LLM-node structured output.",
+            "current_root_keys": list(current),
+        }
+    model, applies_at, note = configured
+    return {
+        "source_model": model.__name__,
+        "applies_at": applies_at,
+        "note": note,
+        "json_schema": model.model_json_schema(),
+        "current_root_keys": list(current),
+    }
 
 
 class ArtifactChangePlanner:
@@ -56,7 +111,7 @@ class ArtifactChangePlanner:
         self.profile, self.overrides = profile, overrides
         self.llm_profiles, self._llm = llm_profiles, llm
 
-    def plan(self, resolved: ResolvedTarget, change: str) -> dict[str, Any]:
+    def rewrite(self, resolved: ResolvedTarget, change: str) -> dict[str, Any]:
         instruction = change.strip()
         if not instruction:
             raise ValueError("change_artifact change cannot be empty")
@@ -64,11 +119,12 @@ class ArtifactChangePlanner:
         system = load_prompt(prompt_path, self.prompts["system"], "system")
         human = load_prompt(prompt_path, self.prompts["human"], "human")
         context = {
-            "target": resolved.label,
-            "editable_fields": list(resolved.editable_fields),
-            "field_guidance": _field_guidance(resolved.editable_fields),
-            "current_values": {key: resolved.current.get(key) for key in resolved.editable_fields},
-            "user_change": instruction,
+            "artifact_name": resolved.artifact,
+            "revision_id": resolved.revision_id,
+            "NODE_STRUCTURED_OUTPUT_CONTRACT": _node_contract(
+                resolved.artifact, resolved.current),
+            "USER_CHANGE": instruction,
+            "CURRENT_ARTIFACT": resolved.current,
         }
         messages = [
             {"role": "system", "content": system},
@@ -79,22 +135,21 @@ class ArtifactChangePlanner:
             self._llm = create_llm(self.profile, self.llm_profiles, self.overrides)
         model = self._llm
         execution = invoke_structured(model, messages, get_schema(self.schema_id))
-        edits = execution["result"].get("edits")
-        if not isinstance(edits, list) or not edits:
-            raise ValueError("Artifact-change planner returned no edits")
-        changes: dict[str, str] = {}
-        for edit in edits:
-            field, value = edit.get("field"), edit.get("new_value")
-            if field not in resolved.editable_fields:
-                raise ValueError(f"Artifact-change planner selected read-only or unknown field: {field}")
-            if field in changes:
-                raise ValueError(f"Artifact-change planner repeated field: {field}")
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"Artifact-change planner returned empty value for {field}")
-            if value.strip() == str(resolved.current.get(field, "")).strip():
-                raise ValueError(f"Artifact-change planner returned unchanged field: {field}")
-            changes[field] = value.strip()
-        return {"changes": changes, "plan": execution["result"],
+        artifact_json = execution["result"].get("artifact_json")
+        if not isinstance(artifact_json, str):
+            raise ValueError("Artifact rewriter returned no complete artifact JSON")
+        try:
+            rewritten = json.loads(artifact_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Artifact rewriter returned invalid artifact JSON") from exc
+        if not isinstance(rewritten, dict) or not rewritten:
+            raise ValueError("Artifact rewriter returned no complete artifact")
+        if rewritten == resolved.current:
+            raise ValueError("Artifact rewriter returned the artifact unchanged")
+        locations = execution["result"].get("changed_locations")
+        if not isinstance(locations, list) or not locations:
+            raise ValueError("Artifact rewriter returned no changed locations")
+        return {"artifact": rewritten, "rewrite": execution["result"],
                 "execution": {"llm_profile": self.profile, "llm_overrides": self.overrides,
                               "schema": self.schema_id, "token_usage": execution["token_usage"],
                               "prompt_ids": dict(self.prompts),
@@ -104,3 +159,7 @@ class ArtifactChangePlanner:
                               },
                               "elapsed_seconds": execution["elapsed_seconds"]},
                 "input": context}
+
+    # Compatibility for callers/tests that still use the old method name.
+    def plan(self, resolved: ResolvedTarget, change: str) -> dict[str, Any]:
+        return self.rewrite(resolved, change)

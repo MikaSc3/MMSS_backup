@@ -20,8 +20,8 @@ decision between those stages.
 
 ## Tool boundary
 
-`WorkflowAgentTools` exposes session inspection, document ingestion, scoped
-feedback, assembly analysis, monopart analysis, natural-language artifact
+`WorkflowAgentTools` exposes session inspection, document ingestion,
+assembly analysis, monopart analysis, natural-language artifact
 correction, sequence generation/revision, final assessment, focused artifact
 reading, and bounded part lookup. `read_artifact` is the single conversational
 artifact reader: it accepts a fixed request vocabulary for assembly context,
@@ -50,19 +50,20 @@ summary. Prompt context is compiled per node, so unrelated dialogue is not sent
 to every model call. Sequence revision always receives the first generated
 sequence plus cumulative accepted sequence feedback.
 
-The editable artifacts are `assembly_overview`, `bom` and `sequence`.
-`change_artifact(target, change)` is the normal chat path for a small natural-
-language correction. A deterministic resolver maps `assembly`, `part001`,
-`part:part001`, `sequence`, or `step:3` to one entity. A dedicated structured-
-output LLM receives only that entity's editable projection, field descriptions
-and the correction. Its proposed fields pass through the same source-hash and
-full-schema validation used by the UI editor. IDs, CAD geometry, quantities,
-colors and part references never enter its editable field list.
+`change_artifact(artifact, change, revision_id="")` is the normal chat path for
+a correction to any assessment or automation-planning JSON artifact. A
+deterministic resolver selects the named complete artifact and active revision.
+A dedicated structured-output LLM receives the whole artifact plus the user's
+change request, updates every affected location, and returns a complete
+replacement. The replacement passes source-hash and full-schema validation
+before it is saved. The general-purpose context-change tool has been removed;
+future planning preferences use the dedicated idea, concept, layout, or cost
+tools instead.
 
 `edit_artifact_fields` remains the exact field-level path used by the visual
 editor. Both paths write atomically and save the prior file plus an audit
 record below `11_history/artifact_edits/`. Semantic changes also write their
-prompt, selected projection, structured plan, model usage and application hash
+prompt, complete rewrite, model usage and application hash
 below `10_runs/artifact_change/`. The generic JSON Merge Patch tool remains for
 explicit schema-valid changes outside both constrained editors. A part change
 keeps monopart analysis current and marks sequence/rendering/final results

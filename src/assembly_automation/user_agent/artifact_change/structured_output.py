@@ -1,20 +1,27 @@
-"""Structured output for one semantic artifact change."""
+"""Structured output for a schema-preserving whole-artifact rewrite."""
 
 from pydantic import BaseModel, Field
 
+class ArtifactRewrite(BaseModel):
+    artifact_json: str = Field(
+        min_length=2,
+        description=(
+            "The complete replacement artifact encoded as one valid JSON object string. "
+            "Preserve the full schema and all unaffected content while applying the "
+            "requested correction everywhere it is relevant."
+        ))
+    changed_locations: list[str] = Field(
+        min_length=1,
+        description="Concise JSON-style locations changed in the replacement artifact.")
+    summary: str = Field(
+        min_length=1,
+        description="Concise past-tense summary of the correction applied.")
 
-class FieldEdit(BaseModel):
-    field: str = Field(description="One exact field name from the supplied editable-field list.")
-    new_value: str = Field(description="Complete replacement text incorporating the correction.")
-    reason: str = Field(description="Short explanation connecting this edit to the user's statement.")
 
-
-class ArtifactChangePlan(BaseModel):
-    edits: list[FieldEdit] = Field(min_length=1, description="Only the fields necessary for the correction.")
-    summary: str = Field(description="Concise past-tense summary of what was changed.")
-
-
-SCHEMAS = {"artifact_change_v1": ArtifactChangePlan}
+SCHEMAS = {
+    "artifact_change_v1": ArtifactRewrite,
+    "artifact_rewrite_v1": ArtifactRewrite,
+}
 
 
 def get_schema(schema_id: str) -> type[BaseModel]:

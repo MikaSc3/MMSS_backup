@@ -17,6 +17,19 @@ if str(SRC_ROOT) not in sys.path:
 
 import streamlit as st
 
+
+# These checkpoints are intentional workflow hand-offs: an artifact is ready
+# and the agent needs the user's review or direction before continuing.
+USER_FEEDBACK_CHECKPOINTS = frozenset({
+    "awaiting_assembly_review",
+    "awaiting_bom_review",
+    "awaiting_sequence_approval",
+    "awaiting_idea_review",
+    "awaiting_concept_review",
+    "awaiting_layout_review",
+    "awaiting_cost_review",
+})
+
 from assembly_automation.app.streamlit.components.chat import render_chat
 from assembly_automation.app.streamlit.components.structured_results import (
     render_output_navigation, render_structured_results)
@@ -195,7 +208,9 @@ def _activity_pulse() -> None:
         # messages invisible until the user causes another page rerun.
         st.rerun(scope="app")
     with st.container(key="activity_strip"):
-        progress_column, terminal_column = st.columns([2.1, 1.0], gap="small")
+        # Match the combined dialogue + structured-output width below so the
+        # terminal starts exactly where the visual workspace begins.
+        progress_column, terminal_column = st.columns([2.6, 0.9], gap="small")
         with progress_column:
             render_progress(st, _snapshot(), st.session_state.product_events,
                             busy=st.session_state.busy)
@@ -260,7 +275,7 @@ def _message(text: str) -> None:
     _submit(st.session_state.controller.submit_user_turn, text)
 
 
-def _field_edits(artifact: str, entity_id: str, changes: dict[str, str],
+def _field_edits(artifact: str, entity_id: str, changes: dict[str, object],
                  expected_sha256: str, reason: str, raw: str,
                  draft_key: str) -> None:
     snapshot = _snapshot()
@@ -338,9 +353,20 @@ def _report_files(snapshot) -> list[Path]:
     return files
 
 
-def _render_data_upload(snapshot) -> None:
-    draft_session = snapshot is None or snapshot.workflow_status == "draft"
-    with st.expander("Data upload", expanded=draft_session and st.session_state.upload_revealed):
+def _render_data_upload(snapshot) -> bool:
+    assessment_not_started = snapshot is None or snapshot.workflow_status == "draft"
+    upload_expander = st.expander(
+        "Data upload",
+        expanded=assessment_not_started and st.session_state.upload_revealed,
+        key="data_upload_expander",
+        on_change="rerun",
+    )
+    with upload_expander:
+        if assessment_not_started and not upload_expander.open:
+            st.markdown(
+                "<span class='data-upload-collapsed-focus'></span>",
+                unsafe_allow_html=True,
+            )
         upload_tab, resume_tab = st.tabs(["New", "Resume"])
         with upload_tab:
             step_column, document_column = st.columns(2, gap="small")
@@ -351,11 +377,11 @@ def _render_data_upload(snapshot) -> None:
                     "Supporting data", accept_multiple_files=True,
                     type=["pdf", "txt", "md", "json", "csv"])
             navigator_ready = bool(st.session_state.pre_session_messages)
-            if draft_session and step is None and navigator_ready:
+            if assessment_not_started and step is None and navigator_ready:
                 st.markdown("<span class='data-upload-next-focus'></span>", unsafe_allow_html=True)
             if not navigator_ready:
                 st.caption("FfA Navigator is initializing. You can select files while it gets ready.")
-            start_ready = (draft_session and step is not None and navigator_ready
+            start_ready = (assessment_not_started and step is not None and navigator_ready
                            and not st.session_state.busy)
             with st.container(key="start_assessment_action"):
                 start_clicked = st.button(
@@ -402,6 +428,7 @@ def _render_data_upload(snapshot) -> None:
                     column.download_button(
                         f"Download {report.stem}", report.read_bytes(), file_name=report.name,
                         mime="text/html", width="stretch")
+    return bool(upload_expander.open)
 
 
 snapshot = _snapshot()
@@ -414,18 +441,24 @@ if st.session_state.intro_error and not st.session_state.pre_session_messages:
     st.warning(f"FfA Navigator could not initialize: {st.session_state.intro_error}")
 
 structured_available = bool(available_output_scopes(snapshot)) if snapshot else False
-left, middle, right = st.columns([1.35, 0.8, 1.35], gap="medium")
+# The engineering artifact is the primary reading surface. Keep the dialogue
+# usable while giving its structured fields materially more room than visuals.
+left, middle, right = st.columns([1.25, 1.35, 0.90], gap="medium")
 with left:
     with st.container(key="dialogue_column"):
-        _render_data_upload(snapshot)
+        upload_open = _render_data_upload(snapshot)
         with st.container(border=True, key="dialogue_panel"):
-            chat_ready = (snapshot is not None and not st.session_state.busy
-                          and snapshot.checkpoint != "complete")
-            if chat_ready:
+            awaiting_user_feedback = (
+                snapshot is not None
+                and not st.session_state.busy
+                and snapshot.checkpoint in USER_FEEDBACK_CHECKPOINTS
+            )
+            if awaiting_user_feedback:
                 st.markdown("<span class='chat-next-focus'></span>", unsafe_allow_html=True)
             render_chat(st, snapshot, busy=st.session_state.busy, on_message=_message,
                         pending_message=st.session_state.pending_user_message,
-                        pre_session_messages=st.session_state.pre_session_messages)
+                        pre_session_messages=st.session_state.pre_session_messages,
+                        history_height=415 if upload_open else 700)
 with middle:
     with st.expander("Structured output", expanded=structured_available):
         requested_selection = render_output_navigation(

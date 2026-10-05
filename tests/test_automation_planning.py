@@ -10,21 +10,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from assembly_automation.workflows.definitions.automation_planning import (
     AutomationPlanningNodeRegistry,
     AutomationPlanningWorkflow,
+    default_node_registry,
 )
 from assembly_automation.workflows.definitions.app_v3 import WorkflowPaths
 from assembly_automation.workflows.runtime.prompting import _select_json
-from assembly_automation.workflows.nodes.automation_concept import structured_output as concept_output
-from assembly_automation.workflows.nodes.layout_planning import structured_output as layout_output
+from assembly_automation.workflows.nodes.automation_concept_synthesis import structured_output as concept_output
 from assembly_automation.workflows.nodes.automation_idea.structured_output import (
     AutomationPlanningBrief,
-    SubprocessPolicy,
 )
 from assembly_automation.workflows.nodes.step_planner_detailed.structured_output import DetailedStepPlan
-from assembly_automation.workflows.nodes.step_planner_detailed.structured_output import AutomationPlannerEquipment
+from assembly_automation.workflows.nodes.step_planner_detailed.structured_output import (
+    AutomationPlannerEquipment, AutomationPlannerSubprozesse)
+from assembly_automation.workflows.nodes.layout_planner.node import run_layout_planner
 from assembly_automation.workflows.nodes.layout_planner.renderer import render_layout
-from assembly_automation.workflows.nodes.layout_planner.structured_output import EquipmentLayout
+from assembly_automation.workflows.nodes.layout_planner.structured_output import EquipmentLayout, get_schema as get_layout_schema
 from assembly_automation.workflows.nodes.cost_planner.node import run_cost_planner
-from agent import structured_output as legacy_output
 
 
 class CliTests(unittest.TestCase):
@@ -41,6 +41,10 @@ def _write(path: Path, value):
 
 
 class AutomationPlanningTests(unittest.TestCase):
+    def test_default_registry_embeds_layout_planner(self):
+        registry = default_node_registry()
+        self.assertTrue(callable(registry.layout_planner))
+
     def test_cost_planner_joins_catalogue_prices_and_calculates_total_deterministically(self):
         class CostModel:
             def with_structured_output(self, schema, include_raw=True):
@@ -101,6 +105,50 @@ class AutomationPlanningTests(unittest.TestCase):
         self.assertIn('width="45.0" height="45.0"', svg)
         self.assertEqual(svg.count("<rect "), 3)  # background plus two equipment rectangles
 
+    def test_layout_node_consumes_synthesized_equipment_and_renders_svg(self):
+        class LayoutModel:
+            def with_structured_output(self, schema, include_raw=True):
+                self.schema = schema
+                return self
+
+            def invoke(self, messages):
+                parsed = self.schema.model_validate({"equipment": [
+                    {"name": "Assembly robot", "class": "robot", "x": 0, "y": 0,
+                     "size": 180},
+                    {"name": "Indexing fixture", "class": "fixture", "x": 0,
+                     "y": 0, "size": 100},
+                ]})
+                return {"parsed": parsed, "raw": SimpleNamespace(usage_metadata={
+                    "input_tokens": 10, "output_tokens": 5, "total_tokens": 15})}
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            concept = root / "concept.json"
+            _write(concept, {"equipment": [
+                {"name": "Assembly robot", "step_ids": [1], "specimen": []},
+                {"name": "Indexing fixture", "step_ids": [1, 2], "specimen": []},
+            ], "conflicts": []})
+            output = root / "layout.json"
+            response = run_layout_planner(
+                artifacts={"automation_concept": concept},
+                settings={"enabled": True, "llm": {"profile": "test"},
+                          "prompts": {"system": "system_v1", "human": "human_v1"},
+                          "structured_output": "layout_planner_v1", "tools": [],
+                          "execution": {"max_tool_rounds": 1},
+                          "inputs": {
+                              "automation_concept": {"enabled": True, "required": True,
+                                                     "kind": "json", "source": "automation_concept"},
+                              "layout_context": {"enabled": True, "kind": "text",
+                                                 "source": "layout_context"}}},
+                llm_profiles={"test": {}}, context={"layout_context": "Compact cell"},
+                output_path=output, llm=LayoutModel())
+
+            self.assertTrue(output.is_file())
+            self.assertTrue(Path(response["rendering"]).is_file())
+            svg = Path(response["rendering"]).read_text(encoding="utf-8")
+            self.assertIn("Assembly robot", svg)
+            self.assertIn("Indexing fixture", svg)
+
     def test_minor_layout_revision_changes_coordinates_and_rerenders_without_llm(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -111,9 +159,10 @@ class AutomationPlanningTests(unittest.TestCase):
             workflow.manifest_path = workflow.planning_root / "planning_manifest.json"
             concept = root / "concept.json"
             layout = root / "layout.json"
-            _write(concept, {"stationen": [{"equipment_station": [
-                {"name": "Assembly robot"}, {"name": "Indexing fixture"}]}],
-                "parallelisierungskonzept": {"parellization_equipment": []}})
+            _write(concept, {"equipment": [
+                {"name": "Assembly robot", "step_ids": [1], "specimen": []},
+                {"name": "Indexing fixture", "step_ids": [1], "specimen": []}],
+                "conflicts": []})
             _write(layout, {"equipment": [
                 {"name": "Assembly robot", "class": "robot", "x": 0, "y": 0},
                 {"name": "Indexing fixture", "class": "fixture", "x": 100, "y": 0}]})
@@ -133,7 +182,9 @@ class AutomationPlanningTests(unittest.TestCase):
             self.assertTrue(Path(response["rendering"]).is_file())
 
     def test_automation_idea_fields_have_descriptions(self):
-        for model in (AutomationPlanningBrief, SubprocessPolicy, DetailedStepPlan):
+        for model in (AutomationPlanningBrief, DetailedStepPlan,
+                      AutomationPlannerSubprozesse,
+                      concept_output.AutomationEquipmentList, EquipmentLayout):
             self.assertTrue(all(field.description for field in model.model_fields.values()), model.__name__)
 
     def test_detailed_equipment_uses_station_style_fields(self):
@@ -142,37 +193,14 @@ class AutomationPlanningTests(unittest.TestCase):
             ["name", "function", "step_id", "specimen"],
         )
 
-    def test_legacy_concept_and_layout_field_descriptions_are_unchanged(self):
-        names = (
-            "MontageablaufEintrag", "EintragEquipment", "EquipmentCoordinate",
-            "StationCoordinate", "AutomatisierungsKonzeptStation",
-            "AutomatisierungsGesamtkonzept", "LayoutPlanerStation", "LayoutPlanerErgebnis",
-        )
-        for name in names:
-            current_module = layout_output if name.startswith("LayoutPlaner") else concept_output
-            current = getattr(current_module, name)
-            legacy = getattr(legacy_output, name)
-            legacy_descriptions = {
-                key: field.description for key, field in legacy.model_fields.items()
-            }
-            self.assertEqual(
-                {key: current.model_fields[key].description for key in legacy_descriptions},
-                legacy_descriptions,
-                name,
-            )
-
-        self.assertEqual(
-            concept_output.EintragEquipment.model_fields["step_id"].description,
-            AutomationPlannerEquipment.model_fields["step_id"].description,
-        )
-
+    def test_active_concept_and_layout_schema_registries_match_configuration(self):
         self.assertIs(
-            concept_output.get_schema("automation_concept_v1"),
-            concept_output.AutomatisierungsGesamtkonzept,
+            concept_output.get_schema("automation_equipment_list_v1"),
+            concept_output.AutomationEquipmentList,
         )
         self.assertIs(
-            layout_output.get_schema("layout_planning_v1"),
-            layout_output.LayoutPlanerErgebnis,
+            get_layout_schema("layout_planner_v1"),
+            EquipmentLayout,
         )
 
     def test_typed_selector_supports_nested_step_ids(self):

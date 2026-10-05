@@ -96,6 +96,10 @@ def entity_selections(snapshot: Any, scope: str) -> list[tuple[str, SelectionCon
             analysis = part.get("part_analysis") if isinstance(part.get("part_analysis"), dict) else {}
             name = analysis.get("part_name_guess") or part.get("name")
             label = f"{part_id} · {name}" if name else part_id
+            quantity = part.get("quantity")
+            quantity_label = f"Qty. {quantity}" if isinstance(quantity, int) else "Qty. —"
+            label = " · ".join(item for item in (part_id, str(name) if name else "", quantity_label)
+                               if item)
             result.append((label, SelectionContext(scope, entity_id=part_id,
                                                     group=f"Part · {part_id}")))
         return result

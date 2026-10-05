@@ -8,7 +8,7 @@ import yaml
 
 
 class PromptMigrationTests(unittest.TestCase):
-    def test_every_global_legacy_prompt_has_one_verified_local_copy(self) -> None:
+    def test_retained_global_legacy_prompts_have_verified_local_copies(self) -> None:
         root = Path(__file__).resolve().parents[1]
         source = yaml.safe_load(
             (root / "configs" / "prompts.yaml").read_text(encoding="utf-8")
@@ -31,8 +31,8 @@ class PromptMigrationTests(unittest.TestCase):
         )
         entries.extend((user_prompts.get("legacy_prompts") or {}).values())
 
-        self.assertEqual(len(entries), len(source))
-        self.assertEqual({entry["legacy_id"] for entry in entries}, set(source))
+        self.assertTrue(entries)
+        self.assertTrue({entry["legacy_id"] for entry in entries} <= set(source))
         self.assertEqual(len({entry["legacy_id"] for entry in entries}), len(entries))
 
         for entry in entries:
@@ -63,14 +63,11 @@ class PromptMigrationTests(unittest.TestCase):
                 "evaluator_system_v1",
                 "evaluator_human_v1",
             },
-            "layout_planning": {
-                "layout_system_v1",
-                "layout_human_v1",
-                "station_system_v1",
-                "station_human_v1",
-                "workplace_system_v1",
-                "workplace_human_v1",
-            },
+            "automation_idea": {"system_v1", "human_v1"},
+            "step_planner_detailed": {"system_v1", "human_v1"},
+            "automation_concept_synthesis": {"system_v1", "human_v1"},
+            "layout_planner": {"system_v1", "human_v1"},
+            "cost_planner": {"system_v1", "human_v1"},
         }
         node_root = root / "src" / "assembly_automation" / "workflows" / "nodes"
         for module, prompt_ids in expected.items():

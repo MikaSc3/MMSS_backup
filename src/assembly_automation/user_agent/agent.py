@@ -30,8 +30,8 @@ TOOL_TRANSITIONS = {
     "ffa_evaluation": "Thank you. Next I’ll render the approved sequence, analyze the interactions, perform the FfA assessment, and prepare the report.",
     "change_artifact": "Understood. I’ll locate the relevant descriptive fields, apply the correction, and save the validated artifact without rerunning its analysis.",
     "automation_concept_idea_generator": "Understood. Next I'll generate a global automation idea from your direction and the current FfA evidence for your review.",
-    "automation_concept_planner": "Thank you. Next I'll plan every assembly step in parallel and consolidate the results into one automation concept.",
-    "revise_automation_concept": "Understood. I'll apply that bounded feedback to a new consolidated concept revision.",
+    "automation_concept_planner": "Thank you. Next I'll plan every assembly step in parallel and consolidate the required equipment.",
+    "revise_automation_concept": "Understood. I'll apply that bounded feedback to a new consolidated equipment-list revision.",
     "generate_engineering_powerpoint": "Generating the editable engineering PowerPoint from the latest saved artifacts.",
 }
 
@@ -40,15 +40,15 @@ TOOL_TRANSITIONS.update({
     # Session inspection is instantaneous routing, so it stays out of chat.
     "inspect_session": "",
     "ingest_documents": "Reviewing the supporting documents.",
-    "analyse_assembly": "Preprocessing and analyzing the assembly.",
+    "analyse_assembly": "Preprocessing the STEP assembly.",
     "analyse_monoparts": "Analyzing the unique parts and building the BOM.",
     "generate_sequence": "Generating the assembly sequence for review.",
     "revise_sequence": "Revising the assembly sequence from your feedback.",
     "ffa_evaluation": "Running interaction analysis, FfA assessment, and report generation.",
     "change_artifact": "Applying the requested artifact correction.",
     "automation_concept_idea_generator": "Generating a global automation idea for review.",
-    "automation_concept_planner": "Planning the assembly steps and consolidating the automation concept.",
-    "revise_automation_concept": "Revising the consolidated automation concept.",
+    "automation_concept_planner": "Planning the assembly steps and consolidating equipment requirements.",
+    "revise_automation_concept": "Revising the consolidated equipment requirements.",
     "layout_planner": "Planning equipment positions and rendering the schematic layout.",
     "revise_layout": "Applying the layout changes and regenerating the schematic rendering.",
     "cost_planner": "Matching equipment to the shared price catalogue and calculating costs.",
@@ -87,6 +87,7 @@ class UserFacingAgent:
         if settings.get("enabled", True) is not True:
             raise ValueError("user_agent is disabled")
         self.toolbox = toolbox
+        self.toolbox.set_status_callback(self.announce)
         self.settings = dict(settings)
         self.events = event_callback
         self.history_path = toolbox.paths.user_agent_root / "conversation.json"
@@ -368,15 +369,15 @@ def _tool_summary(tool_name: str, result: Any) -> str:
     if tool_name in {"edit_intermediate_artifact", "edit_artifact_fields"} and isinstance(result, Mapping):
         return f"Updated {result.get('artifact')} and saved the previous version in history."
     if tool_name == "change_artifact" and isinstance(result, Mapping):
-        fields = ", ".join((result.get("changes") or {}).keys())
-        return (f"Updated {result.get('target')} ({fields}) and saved the previous version "
+        locations = ", ".join(result.get("changed_locations") or [])
+        return (f"Updated {result.get('target')} ({locations}) and saved the previous version "
                 "in history. Downstream results were marked stale where required.")
     if tool_name == "revise_sequence" and isinstance(result, Mapping):
         return f"Created sequence revision {result.get('revision_id')}."
     if tool_name == "automation_concept_idea_generator" and isinstance(result, Mapping):
         return f"Created automation idea {result.get('revision_id')} for review."
     if tool_name in {"automation_concept_planner", "revise_automation_concept"} and isinstance(result, Mapping):
-        return f"Created automation concept {result.get('revision_id')} for review."
+        return f"Created detailed step plans and consolidated equipment list {result.get('revision_id')} for review."
     if tool_name == "layout_planner" and isinstance(result, Mapping):
         return f"Created equipment layout {result.get('revision_id')} and its schematic rendering for review."
     if tool_name == "revise_layout" and isinstance(result, Mapping):

@@ -51,11 +51,12 @@ class ProgressStateTests(unittest.TestCase):
 
         render_progress(target, snapshot, events, busy=True)
 
-        self.assertEqual(target.body.count('class="workflow-node"'), len(PHASES))
+        self.assertEqual(target.body.count('class="workflow-node"'), 2)
+        self.assertNotIn('class="workflow-label"></div>', target.body)
         self.assertIn('class="workflow-phase active"', target.body)
         self.assertIn("STEP preprocessing", target.body)
 
-    def test_render_activates_geometry_extraction_substage(self):
+    def test_preprocessing_subprogress_stays_within_the_product_phase(self):
         target = MarkdownCapture()
         snapshot = self.snapshot({"step_preprocessing": {"status": "running"}})
         events = [{"type": "workflow.stage.progress", "stage": "step_preprocessing",
@@ -64,10 +65,11 @@ class ProgressStateTests(unittest.TestCase):
         render_progress(target, snapshot, events, busy=True)
 
         self.assertIn('class="workflow-phase active"', target.body)
-        self.assertIn("Geometry extraction from STEP", target.body)
+        self.assertIn("STEP preprocessing", target.body)
+        self.assertNotIn("Geometry extraction from STEP", target.body)
         self.assertIn("2 / 4", target.body)
 
-    def test_render_activates_step_rendering_substage(self):
+    def test_rendering_subprogress_does_not_create_a_product_phase(self):
         target = MarkdownCapture()
         snapshot = self.snapshot({"step_preprocessing": {"status": "running"}})
         events = [{"type": "workflow.stage.progress", "stage": "step_preprocessing",
@@ -75,15 +77,17 @@ class ProgressStateTests(unittest.TestCase):
 
         render_progress(target, snapshot, events, busy=True)
 
-        self.assertIn("STEP rendering", target.body)
+        self.assertIn("STEP preprocessing", target.body)
+        self.assertNotIn("STEP rendering", target.body)
 
     def test_progress_is_visible_before_a_session_exists(self):
         target = MarkdownCapture()
 
         render_progress(target, None, [], busy=False)
 
-        self.assertEqual(target.body.count('class="workflow-node"'), len(PHASES))
-        self.assertIn("Ready to upload a STEP assembly", target.body)
+        self.assertEqual(target.body.count('class="workflow-node"'), 1)
+        self.assertNotIn('class="workflow-label"></div>', target.body)
+        self.assertIn("Session setup", target.body)
 
     def test_draft_session_waits_at_setup(self):
         draft = self.snapshot({}, checkpoint="awaiting_upload", workflow_status="draft")
@@ -95,7 +99,7 @@ class ProgressStateTests(unittest.TestCase):
 
         target = MarkdownCapture()
         render_progress(target, draft, [], busy=False)
-        self.assertIn("Waiting for STEP upload", target.body)
+        self.assertIn("Session setup", target.body)
 
     def test_concept_planning_checkpoints_advance_new_phases(self):
         concept = phase_states(self.snapshot({}, checkpoint="awaiting_concept_review",

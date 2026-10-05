@@ -5,7 +5,8 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from assembly_automation.app.streamlit.components.visuals import _view_index, images_for_selection
+from assembly_automation.app.streamlit.components.visuals import (
+    _view_index, filter_images, images_for_selection)
 from assembly_automation.app.streamlit.image_catalog import ImageEntry
 from assembly_automation.app.streamlit.selection import (
     SelectionContext, available_output_scopes, entity_selections)
@@ -43,6 +44,18 @@ class VisualStateTests(unittest.TestCase):
             [item.path.name for item in images_for_selection(
                 entries, SelectionContext("sequence"))][0], "overview.png")
 
+    def test_visual_filter_defaults_to_iso1_and_can_show_collages_or_all(self):
+        entries = [
+            ImageEntry(Path("housing_iso1.png"), "Assembly", "ISO1", "assembly"),
+            ImageEntry(Path("collage_step_01.png"), "Sequence", "Step 1 collage", "step_collage"),
+            ImageEntry(Path("step_01_iso2.png"), "Sequence", "Step 1 ISO2", "assembled"),
+        ]
+        self.assertEqual([item.path.name for item in filter_images(entries, "ISO1")],
+                         ["housing_iso1.png"])
+        self.assertEqual([item.path.name for item in filter_images(entries, "Collage")],
+                         ["collage_step_01.png"])
+        self.assertEqual(filter_images(entries, "All"), entries)
+
 
 class ArtifactNavigationTests(unittest.TestCase):
     class Snapshot:
@@ -74,7 +87,7 @@ class ArtifactNavigationTests(unittest.TestCase):
                          ["assembly", "part", "sequence", "interaction", "ffa"])
         parts = entity_selections(snapshot, "part")
         self.assertEqual([label for label, _selection in parts],
-                         ["part_001 · Housing", "part_002 · Shaft"])
+                         ["part_001 · Housing · Qty. —", "part_002 · Shaft · Qty. —"])
         interactions = entity_selections(snapshot, "interaction")
         self.assertEqual([selection.step_id for _label, selection in interactions], [1, 2])
         self.assertEqual(interactions[0][1].revision_id, "r007")
